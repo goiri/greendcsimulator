@@ -1,0 +1,27 @@
+# Location
+latitude = 40.522396
+longitude = -74.46073
+
+# Solar in Parasol
+#solar.data = data/parasol-1month.solar
+#solar.capacity = 3200 # W
+#solar.efficiency = 0.97 # 97%
+# Solar in Newark
+solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,NEWARK_INTERNATIONAL_ARPT
+solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,QUITO
+solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,ASWAN
+solar.capacity = 1 # W
+solar.efficiency = 0.97 # 97%
+
+# Wind
+wind.data = 
+
+# Electricity
+brown.energy = data/parasol.brown
+brown.power  = 13.72 #$/kW
+brown.netmetering = 1.0 # 100%
+
+# Temperature
+temperature = data/parasol.temperature
+#temperature = /net/wonko/home/jlberral/solarpower/test391-full/14-pue.data,ASWAN
+

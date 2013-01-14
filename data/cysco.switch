@@ -1,0 +1,3 @@
+ports = 52
+power.idle = 25
+power.peak = 35

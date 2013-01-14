@@ -1,0 +1,22 @@
+# Solar panels
+solar.capacity = 0 # 3.2kW
+solar.efficiency = 0
+solar.price = 1 # $/Wh
+
+# Batteries
+battery.capacity =0 # 32kWh
+battery.efficiency = 0
+battery.price = 1 # $/Wh
+
+# Cooling
+cooling = parasol
+
+# IT
+# Rack 1
+it.rack1.server.num = 42
+it.rack1.server.type = AtomD525MW
+it.rack1.switch.type = Cysco
+# Rack 2
+it.rack2.server.num = 22
+it.rack2.server.type = AtomD525MW
+it.rack2.switch.type = Cysco
