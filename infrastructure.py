@@ -90,6 +90,18 @@ class Rack:
 class IT:
 	def __init__(self):
 		self.racks = {}
+		
+	def getMaxPower(self):
+		maxPower = 0.0
+		for rackId in self.racks:
+			rack = self.racks[rackId]
+			# Switches
+			maxPower += rack.switch.powerpeak
+			# Servers
+			for serverId in rack.servers:
+				server = rack.servers[serverId]
+				maxPower += server.powerpeak
+		return maxPower
 
 class Cooling:
 	def __init__(self):
@@ -202,7 +214,7 @@ class Infrastructure:
 									print 'Server', rackId, key, value
 							# Switch
 							elif key.startswith('it.'+rackId+'.switch'):
-								if key.startswith('it.'+rackId+'.server.type'):
+								if key.startswith('it.'+rackId+'.switch.type'):
 									self.it.racks[rackId].switch = Switch()
 									self.it.racks[rackId].switch.read(value)
 		# Initialize everything
