@@ -8,7 +8,7 @@ wind.price = 1.5 # $1500/kW -> $1.5/W
 
 # Batteries
 battery.capacity = 32000 # 32kWh
-battery.capacity = 0 # 32kWh
+#battery.capacity = 0 # 32kWh
 battery.efficiency = 0.85
 battery.price = 0.213 # $0.213/Wh
 
