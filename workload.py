@@ -4,8 +4,11 @@ from commons import *
 
 class Workload:
 	def __init__(self, filename=None):
+		self.deferrable = False
+		self.minimum = 0.0
+		self.repeat = False
 		self.load = self.readValues(filename)
-		
+	
 	def readValues(self, filename=None):
 		ret = []
 		if filename == '':
@@ -16,11 +19,35 @@ class Workload:
 				for line in f.readlines():
 					# Clean line
 					line = cleanLine(line)
-					if line != '':
+					if line.find('=') > 0:
+						key, value = line.split('=')
+						key = key.strip()
+						value = value.strip()
+						if key.startswith('workload.deferrable'):
+							if value.lower() == 'false':
+								self.deferrable = False
+							else:
+								self.deferrable = True
+						elif key.startswith('workload.repeat'):
+							if value.lower() == 'false':
+								self.repeat = False
+							else:
+								self.repeat = True
+						elif key.startswith('workload.minimum'):
+							self.minimum = float(value)
+					elif line != '':
 						t, v = line.split(' ')
 						t = parseTime(t)
 						v = float(v)
 						ret.append((t, v))
+			if self.repeat:
+				# Repeat five years
+				torepeat = list(ret)
+				last = ret[-1][0]
+				for i in range(0, 5*365):
+					for t, load in torepeat:
+						ret.append((last+t, load))
+					last = ret[-1][0]
 		return ret
 	
 	def getLoad(self, time):

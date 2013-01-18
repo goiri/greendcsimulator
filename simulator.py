@@ -18,6 +18,7 @@ TODO list:
 * Battery lifetime model
 * Amortization periods calculation
 * Deferrable workloads
+* Change options from command line
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile):
@@ -110,27 +111,30 @@ class Simulator:
 				print '    Green: ', sol['NetGreen[0]']
 				print '  Peak:    ', sol['PeakBrown']
 			"""
-			
-			# Calculate brown power and net metering
-			brownpower = sol['BattBrown[0]'] + sol['LoadBrown[0]']
-			if brownpower > peakbrown:
-				peakbrown = brownpower
-			netpower = sol['NetGreen[0]']
-			"""
-			brownpower = workload + coolingpower - greenpower
-			netpower = 0.0
-			if brownpower < 0.0:
-				netpower = -1.0*brownpower
-				brownpower = 0.0
+			# If the 
+			if sol == None:
+				# Default behavior
+				print "No solution at", timeStr(time)
+				brownpower = workload + coolingpower - greenpower
+				netpower = 0.0
+				if brownpower < 0.0:
+					netpower = -1.0*brownpower
+					brownpower = 0.0
+			else:
+				# Calculate brown power and net metering
+				brownpower = sol['BattBrown[0]'] + sol['LoadBrown[0]']
+				netpower = sol['NetGreen[0]']
+				# Battery
+				batdischarge = sol['LoadBatt[0]']
+				batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
+				batpower = self.infra.battery.efficiency * batcharge - batdischarge
+				battery += (TIMESTEP/3600.0) * batpower
+				
 			# Peak brown
 			if brownpower > peakbrown:
 				peakbrown = brownpower
-			"""
-			# Battery
-			batdischarge = sol['LoadBatt[0]']
-			batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
-			batpower = self.infra.battery.efficiency * batcharge - batdischarge
-			battery += (TIMESTEP/3600.0) * batpower
+			
+			#print timeStr(time), sol['PeakBrown'], peakbrown
 			
 			#print timeStr(time), '\t%.1f'%brownpower, '\t%.1f'%greenpower, '\t%.1f'%netpower, '\t%.1f'%batcharge, '\t%.1f'%batdischarge, '\t%.1f' % (100.0*solver.options.batIniCap/solver.options.batCap), '\t%.1f' % (solver.options.previousPeak)
 			
@@ -168,18 +172,18 @@ class Simulator:
 
 if __name__ == "__main__":
 	# Use regular parasol infrastructure
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'fixed.workload')
+	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
 	simulator.run()
 	# Use regular parasol without batteries
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'fixed.workload')
+	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
 	simulator.infra.battery.capacity = 0.0
 	simulator.run()
 	# Use parasol without green
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'fixed.workload')
+	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
 	simulator.infra.solar.capacity = 0.0
 	simulator.run()
 	# Use parasol without green or batteries
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'fixed.workload')
+	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
 	simulator.infra.battery.capacity = 0.0
 	simulator.infra.solar.capacity = 0.0
 	simulator.run()
