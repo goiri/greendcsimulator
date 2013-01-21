@@ -24,12 +24,11 @@ TODO list:
 * Change options from command line
 """
 class Simulator:
-	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, loadDelay=False):
+	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME):
 		self.infra = Infrastructure(infrafile)
 		self.location = Location(locationfile)
 		self.workload = Workload(workloadfile)
 		self.period = period
-		self.loadDelay = loadDelay
 	
 	def run(self):
 		costbrownenergy = 0.0
@@ -45,7 +44,7 @@ class Simulator:
 		# Location traces
 		# Workload
 		print 'Simulation period: %s' % (timeStr(self.period))
-		if self.loadDelay:
+		if self.workload.deferrable:
 			print 'Deferrable workload'
 		for t in range(0, self.period/TIMESTEP):
 			time = t*TIMESTEP
@@ -65,13 +64,16 @@ class Simulator:
 			# Apply GreenSwitch policy
 			solver = ParasolModel()
 			solver.options.optCost = 1.0
-			solver.options.loadDelay = self.loadDelay
+			# Load
+			solver.options.loadDelay = self.workload.deferrable
 			solver.options.prevLoad = prevload
+			solver.options.minSize = self.workload.minimum
+			solver.options.maxSize = self.infra.it.getMaxPower()
+			# Power infrastructure costs
 			solver.options.netMeter = self.location.netmetering
 			solver.options.peakCost = self.location.brownpowerprice
 			solver.options.previousPeak = 0.95*peakbrown
-			solver.options.minSize = 0.0 # Covering subset
-			solver.options.maxSize = self.infra.it.getMaxPower()
+			# Battery
 			solver.options.batCap = self.infra.battery.capacity
 			solver.options.batIniCap = battery
 			#solver.options.batDischargeMax = 0.235294117647
@@ -112,6 +114,7 @@ class Simulator:
 				if brownpower < 0.0:
 					netpower = -1.0*brownpower
 					brownpower = 0.0
+				prevload = 0.0
 			else:
 				# Calculate brown power and net metering
 				brownpower = sol['BattBrown[0]'] + sol['LoadBrown[0]']
@@ -121,7 +124,22 @@ class Simulator:
 				batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
 				batpower = self.infra.battery.efficiency * batcharge - batdischarge
 				battery += (TIMESTEP/3600.0) * batpower
-				
+				# Load load
+				workload = round(self.workload.getLoad(time) + self.infra.cooling.getPower(self.location.getTemperature(time)), 4)
+				execload = round(sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'], 4)
+				# Delay load
+				if self.workload.deferrable:
+					# Delayed load = Current workload - executed load
+					prevload += workload - execload
+				# Debug
+				'''
+				print 'Deferrable workload:'
+				print ' Time    ', timeStr(time)
+				print ' Workload', workload
+				print ' Load    ', execload
+				print ' Delay   ', (workload - execload)
+				print ' To delay', prevload
+				'''
 			# Peak brown
 			if brownpower > peakbrown:
 				peakbrown = brownpower
@@ -162,8 +180,10 @@ class Simulator:
 		# Summary
 		print '$%.2f + $%.2f + $%.2f = $%.2f' % (costbrownenergy, costbrownpower, costinfrastructure, costbrownenergy+costbrownpower+costinfrastructure)
 
+
 if __name__ == "__main__":
 	parser = OptionParser(usage="usage: %prog [options] filename", version="%prog 1.0")
+	# Data files
 	parser.add_option('-w', '--workload', dest='workload', help='specify the workload file',       default=DATA_PATH+'/workload/variable.workload')
 	parser.add_option('-l', '--location', dest='location', help='specify the location file',       default=DATA_PATH+'/parasol.location')
 	parser.add_option('-i', '--infra',    dest='infra',    help='specify the infrastructure file', default=DATA_PATH+'/parasol.infra')
@@ -172,14 +192,20 @@ if __name__ == "__main__":
 	# Infrastructure options
 	parser.add_option('-s', '--solar',    dest='solar',   action="store_false", help='specify the infrastructure has solar')
 	parser.add_option('-b', '--battery',  dest='battery', action="store_false", help='specify the infrastructure has solar')
+	# Load
+	parser.add_option('-d', '--delay',    dest='delay',   action="store_true",  help='specify if we can delay the load')
 	
 	(options, args) = parser.parse_args()
 	
-	# Use parasol without green or batteries
+	# Initialize simulator
 	simulator = Simulator(options.infra, options.location, options.workload, parseTime(options.period))
 	if options.battery == False:
 		simulator.infra.battery.capacity = 0.0
 	if options.solar == False:
 		simulator.infra.solar.capacity = 0.0
+	if options.delay == True:
+		simulator.workload.deferrable = True
 	simulator.infra.printSummary()
+	
+	# Run simulation
 	simulator.run()
