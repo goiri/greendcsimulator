@@ -1,5 +1,7 @@
 #!/usr/bin/env python2.7
 
+from optparse import OptionParser
+
 from conf import *
 from commons import *
 from infrastructure import *
@@ -9,37 +11,43 @@ from workload import *
 # GreenSwitch
 import sys
 sys.path.append('/home/goiri/hadoop-parasol')
+sys.path.append('/home/goirix/hadoop-parasol')
 from parasolsolver import ParasolModel
 from parasolsolvercommons import TimeValue
 
 """
 Simulator
 TODO list:
+* Deferrable workloads
 * Battery lifetime model
 * Amortization periods calculation
-* Deferrable workloads
 * Change options from command line
 """
 class Simulator:
-	def __init__(self, infrafile, locationfile, workloadfile):
+	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, loadDelay=False):
 		self.infra = Infrastructure(infrafile)
 		self.location = Location(locationfile)
 		self.workload = Workload(workloadfile)
+		self.period = period
+		self.loadDelay = loadDelay
 	
 	def run(self):
 		costbrownenergy = 0.0
 		costbrownpower = 0.0
 		peakbrown = 0.0
 		peakbrownaccountingtime = 0
-		#battery = 0.85*self.infra.battery.capacity
+		# No previous load
+		prevload = 0.0
 		# We start with full capacity
 		battery = self.infra.battery.capacity
 		
 		# Datacenter
 		# Location traces
 		# Workload
-		print 'Simulation period: %s' % (timeStr(SIMULATIONTIME))
-		for t in range(0, SIMULATIONTIME/TIMESTEP):
+		print 'Simulation period: %s' % (timeStr(self.period))
+		if self.loadDelay:
+			print 'Deferrable workload'
+		for t in range(0, self.period/TIMESTEP):
 			time = t*TIMESTEP
 			brownenergyprice = self.location.getBrownPrice(time)
 			temperature = self.location.getTemperature(time)
@@ -54,13 +62,11 @@ class Simulator:
 			windpower = wind * self.infra.wind.capacity * self.infra.wind.efficiency
 			greenpower = solarpower + windpower
 			
-			# TODO
-			# Policy
+			# Apply GreenSwitch policy
 			solver = ParasolModel()
 			solver.options.optCost = 1.0
-			solver.options.loadDelay = False
-			solver.options.prevLoad = 0.0
-			#solver.options.prevLoad = 5000.0
+			solver.options.loadDelay = self.loadDelay
+			solver.options.prevLoad = prevload
 			solver.options.netMeter = self.location.netmetering
 			solver.options.peakCost = self.location.brownpowerprice
 			solver.options.previousPeak = 0.95*peakbrown
@@ -97,21 +103,7 @@ class Simulator:
 			
 			obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, load=worklPredi, previousPeak=0.95*peakbrown, stateChargeBattery=False)
 			
-			"""
-			print 'Solution:'
-			if sol != None:
-				print '  Battery:'
-				print '    Brown: ', sol['BattBrown[0]']
-				print '    Green: ', sol['BattGreen[0]']
-				print '  Load:'
-				print '    Batt:  ', sol['LoadBatt[0]']
-				print '    Brown: ', sol['LoadBrown[0]']
-				print '    Green: ', sol['LoadGreen[0]']
-				print '  Net:'
-				print '    Green: ', sol['NetGreen[0]']
-				print '  Peak:    ', sol['PeakBrown']
-			"""
-			# If the 
+			# Check if GreenSwitch gives a solution
 			if sol == None:
 				# Default behavior
 				print "No solution at", timeStr(time)
@@ -134,8 +126,8 @@ class Simulator:
 			if brownpower > peakbrown:
 				peakbrown = brownpower
 			
+			# DEBUG
 			#print timeStr(time), sol['PeakBrown'], peakbrown
-			
 			#print timeStr(time), '\t%.1f'%brownpower, '\t%.1f'%greenpower, '\t%.1f'%netpower, '\t%.1f'%batcharge, '\t%.1f'%batdischarge, '\t%.1f' % (100.0*solver.options.batIniCap/solver.options.batCap), '\t%.1f' % (solver.options.previousPeak)
 			
 			# Operational costs
@@ -171,19 +163,23 @@ class Simulator:
 		print '$%.2f + $%.2f + $%.2f = $%.2f' % (costbrownenergy, costbrownpower, costinfrastructure, costbrownenergy+costbrownpower+costinfrastructure)
 
 if __name__ == "__main__":
-	# Use regular parasol infrastructure
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
-	simulator.run()
-	# Use regular parasol without batteries
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
-	simulator.infra.battery.capacity = 0.0
-	simulator.run()
-	# Use parasol without green
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
-	simulator.infra.solar.capacity = 0.0
-	simulator.run()
+	parser = OptionParser(usage="usage: %prog [options] filename", version="%prog 1.0")
+	parser.add_option('-w', '--workload', dest='workload', help='specify the workload file',       default=DATA_PATH+'/workload/variable.workload')
+	parser.add_option('-l', '--location', dest='location', help='specify the location file',       default=DATA_PATH+'/parasol.location')
+	parser.add_option('-i', '--infra',    dest='infra',    help='specify the infrastructure file', default=DATA_PATH+'/parasol.infra')
+	# Period
+	parser.add_option('-p', '--period',   dest='period',   help='specify the infrastructure file', default='1y')
+	# Infrastructure options
+	parser.add_option('-s', '--solar',    dest='solar',   action="store_false", help='specify the infrastructure has solar')
+	parser.add_option('-b', '--battery',  dest='battery', action="store_false", help='specify the infrastructure has solar')
+	
+	(options, args) = parser.parse_args()
+	
 	# Use parasol without green or batteries
-	simulator = Simulator(DATA_PATH+'parasol.infra', DATA_PATH+'parasol.location', DATA_PATH+'variable.workload')
-	simulator.infra.battery.capacity = 0.0
-	simulator.infra.solar.capacity = 0.0
+	simulator = Simulator(options.infra, options.location, options.workload, parseTime(options.period))
+	if options.battery == False:
+		simulator.infra.battery.capacity = 0.0
+	if options.solar == False:
+		simulator.infra.solar.capacity = 0.0
+	simulator.infra.printSummary()
 	simulator.run()

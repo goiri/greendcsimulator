@@ -220,18 +220,19 @@ class Infrastructure:
 		# Initialize everything
 		for rackId in self.it.racks:
 			self.it.racks[rackId].initServers()
-			
-		# Print datacenter summary
-		self.printSummary()
 	
 	# Intrastructure summary
 	def printSummary(self):
-		print 'Solar panels: ', powerStr(self.solar.capacity)
-		print 'Wind turbines:', powerStr(self.wind.capacity)
-		print 'Batteries:    ', energyStr(self.battery.capacity)
-		print 'IT:'
+		print 'Datacenter infrastructure:'
+		if self.solar.capacity > 0:
+			print '\tSolar panels: ', powerStr(self.solar.capacity)
+		if self.wind.capacity > 0:
+			print '\tWind turbines:', powerStr(self.wind.capacity)
+		if self.battery.capacity > 0:
+			print '\tBatteries:    ', energyStr(self.battery.capacity)
+		print '\tIT:'
 		for rackId in sorted(self.it.racks):
-			print '\t', rackId, len(self.it.racks[rackId].servers), 'servers'
+			print '\t\t', rackId, len(self.it.racks[rackId].servers), 'servers'
 
 # Main program
 if __name__ == "__main__":
