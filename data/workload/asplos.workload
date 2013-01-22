@@ -1,0 +1,29 @@
+workload.deferrable = false
+workload.repeat = true
+workload.minimum = 8
+0h 0
+1h 24
+2h 28
+3h 48
+4h 24
+5h 60
+6h 18
+7h 62
+8h 48
+9h 32
+10h 48
+11h 0
+12h 0
+13h 16
+14h 16
+15h 64
+16h 64
+17h 16
+18h 60
+19h 16
+20h 48
+21h 16
+22h 60
+23h 0
+23h45m 10
+24h 0

@@ -78,6 +78,9 @@ class Simulator:
 		prevload = 0.0
 		# We start with full capacity
 		battery = self.infra.battery.capacity
+		# Battery
+		batcharge = 0.0
+		batdischarge = 0.0
 		# State
 		stateChargeBattery = False
 		stateNetMeter = False
@@ -163,6 +166,7 @@ class Simulator:
 			
 			# Check if GreenSwitch gives a solution
 			if sol == None:
+				print "No solution at", timeStr(time)
 				# Calculate workload: Get the number of nodes required
 				reqNodes = self.workload.getLoad(time)
 				loadPower = self.calculateITPower(reqNodes)
