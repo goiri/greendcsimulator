@@ -31,6 +31,9 @@ def parseTime(line):
 	if line.find('y') >= 0:
 		val = int(line[:line.find('y')]) * 365 * 24 * 60 * 60
 		ret += val + parseTime(line[line.find('y')+len('y'):])
+	elif line.find('w') >= 0:
+		val = int(line[:line.find('w')]) * 7 * 24 * 60 * 60
+		ret += val + parseTime(line[line.find('w')+len('w'):])
 	elif line.find('d') >= 0:
 		val = int(line[:line.find('d')]) * 24 * 60 * 60
 		ret += val + parseTime(line[line.find('d')+len('d'):])
