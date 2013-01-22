@@ -1,3 +1,3 @@
 workload.deferrable = false
-workload.minimum = 270
-0 1000
+workload.minimum = 8
+0 32

@@ -25,12 +25,46 @@ TODO list:
 * Amortization periods calculation
 """
 class Simulator:
-	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME):
+	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
 		self.infra = Infrastructure(infrafile)
 		self.location = Location(locationfile)
 		self.workload = Workload(workloadfile)
 		self.period = period
+		# Workload
+		self.turnoff = turnoff
 	
+	"""
+	Calculate the load based on the number of servers
+	"""
+	def calculateITPower(self, numServers):
+		power = 0.0
+		reqServers = numServers
+		# Walk the racks
+		for rackId in sorted(self.infra.it.racks.keys()):
+			# Add switch power
+			rackUtilization = 1.0
+			if reqServers < len(self.infra.it.racks[rackId].servers):
+				rackUtilization = float(reqServers) / float(len(self.infra.it.racks[rackId].servers))
+			powerSwitchIdle = self.infra.it.racks[rackId].switch.poweridle
+			powerSwitchPeak = self.infra.it.racks[rackId].switch.powerpeak
+			power += powerSwitchIdle + rackUtilization*(powerSwitchPeak - powerSwitchIdle)
+			
+			# Walk the servers in the rack
+			for serverId in self.infra.it.racks[rackId].servers:
+				# Add server power
+				if reqServers > 0:
+					power += self.infra.it.racks[rackId].servers[serverId].powerpeak
+					reqServers -= 1
+				elif self.turnoff == False:
+					power += self.infra.it.racks[rackId].servers[serverId].poweridle
+				else:
+					power += self.infra.it.racks[rackId].servers[serverId].powers3
+		#print "Calculate the power for", numServers, "servers", power, "W"
+		return power
+	
+	"""
+	Run simulation
+	"""
 	def run(self):
 		costbrownenergy = 0.0
 		costbrownpower = 0.0
@@ -50,6 +84,8 @@ class Simulator:
 		print 'Simulation period: %s' % (timeStr(self.period))
 		if self.workload.deferrable:
 			print 'Deferrable workload'
+		if self.turnoff != False:
+			print 'Turn off nodes'
 			
 		# Logging file
 		try:
@@ -62,7 +98,6 @@ class Simulator:
 			time = t*TIMESTEP
 			brownenergyprice = self.location.getBrownPrice(time)
 			temperature = self.location.getTemperature(time)
-			workload = self.workload.getLoad(time)
 			coolingpower = self.infra.cooling.getPower(temperature)
 			netmetering = self.location.netmetering
 			
@@ -79,7 +114,7 @@ class Simulator:
 			# Load
 			solver.options.loadDelay = self.workload.deferrable
 			solver.options.prevLoad = prevload
-			solver.options.minSize = self.workload.minimum
+			solver.options.minSize = self.calculateITPower(self.workload.minimum)
 			solver.options.maxSize = self.infra.it.getMaxPower()
 			# Power infrastructure costs
 			solver.options.netMeter = self.location.netmetering
@@ -108,9 +143,12 @@ class Simulator:
 			brownPrice = []
 			worklPredi = []
 			for predhour in range(0, 24):
+				reqNodes = self.workload.getLoad(time + predhour*60*60)
+				loadPower = self.calculateITPower(reqNodes)
+				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
+				w = loadPower + coolingPower
 				g = self.location.getSolar(time + predhour*60*60) * self.infra.solar.capacity * self.infra.solar.efficiency
 				b = self.location.getBrownPrice(time + predhour*60*60)
-				w = self.workload.getLoad(time + predhour*60*60) + self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
 				greenAvail.append(TimeValue(predhour*60*60, g))
 				brownPrice.append(TimeValue(predhour*60*60, b))
 				worklPredi.append(TimeValue(predhour*60*60, w))
@@ -121,15 +159,24 @@ class Simulator:
 			
 			# Check if GreenSwitch gives a solution
 			if sol == None:
+				# Calculate workload: Get the number of nodes required
+				reqNodes = self.workload.getLoad(time)
+				loadPower = self.calculateITPower(reqNodes)
+				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
 				# Default behavior
 				print "No solution at", timeStr(time)
-				brownpower = workload + coolingpower - greenpower
+				brownpower = loadPower + coolingPower - greenpower
 				netpower = 0.0
 				if brownpower < 0.0:
 					netpower = -1.0*brownpower
 					brownpower = 0.0
+				print "load", loadPower
+				print "cooling", coolingPower
+				print "green", greenpower
+				print "net", netpower
+				print "brown", brownpower
 				# Load
-				workload = round(self.workload.getLoad(time) + self.infra.cooling.getPower(self.location.getTemperature(time)), 4)
+				workload = loadPower + coolingPower
 				execload = workload
 				# State
 				stateChargeBattery = False
@@ -147,7 +194,10 @@ class Simulator:
 				batpower = self.infra.battery.efficiency * batcharge - batdischarge
 				battery += (TIMESTEP/3600.0) * batpower
 				# Load
-				workload = round(self.workload.getLoad(time) + self.infra.cooling.getPower(self.location.getTemperature(time)), 4)
+				reqNodes = self.workload.getLoad(time)
+				loadPower = self.calculateITPower(reqNodes)
+				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
+				workload = round(loadPower + coolingPower, 4)
 				execload = round(sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'], 4)
 				# Delay load
 				if self.workload.deferrable:
@@ -226,11 +276,12 @@ if __name__ == "__main__":
 	parser.add_option('-b', '--battery',  dest='battery', action="store_false", help='specify the infrastructure has solar')
 	# Load
 	parser.add_option('-d', '--delay',    dest='delay',   action="store_true",  help='specify if we can delay the load')
+	parser.add_option('-o', '--alwayson', dest='alwayson',action="store_true",  help='specify if the system is always on')
 	
 	(options, args) = parser.parse_args()
 	
 	# Initialize simulator
-	simulator = Simulator(options.infra, options.location, options.workload, parseTime(options.period))
+	simulator = Simulator(options.infra, options.location, options.workload, parseTime(options.period), turnoff=not options.alwayson)
 	if options.battery == False:
 		simulator.infra.battery.capacity = 0.0
 	if options.solar == False:
