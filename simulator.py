@@ -36,7 +36,7 @@ class Simulator:
 	"""
 	Calculate the load based on the number of servers
 	"""
-	def calculateITPower(self, numServers):
+	def calculateITPower(self, numServers, minimum=False):
 		power = 0.0
 		reqServers = numServers
 		# Walk the racks
@@ -44,7 +44,7 @@ class Simulator:
 			# Add switch power
 			rackUtilization = 1.0
 			if reqServers < len(self.infra.it.racks[rackId].servers):
-				rackUtilization = float(reqServers) / float(len(self.infra.it.racks[rackId].servers))
+				rackUtilization = math.ceil(reqServers) / float(len(self.infra.it.racks[rackId].servers))
 			powerSwitchIdle = self.infra.it.racks[rackId].switch.poweridle
 			powerSwitchPeak = self.infra.it.racks[rackId].switch.powerpeak
 			power += powerSwitchIdle + rackUtilization*(powerSwitchPeak - powerSwitchIdle)
@@ -53,13 +53,17 @@ class Simulator:
 			for serverId in self.infra.it.racks[rackId].servers:
 				# Add server power
 				if reqServers > 0:
-					power += self.infra.it.racks[rackId].servers[serverId].powerpeak
+					if minimum:
+						power += self.infra.it.racks[rackId].servers[serverId].poweridle
+					else:
+						power += self.infra.it.racks[rackId].servers[serverId].powerpeak
 					reqServers -= 1
+					if reqServers < 0:
+						reqServers = 0
 				elif self.turnoff == False:
 					power += self.infra.it.racks[rackId].servers[serverId].poweridle
 				else:
 					power += self.infra.it.racks[rackId].servers[serverId].powers3
-		#print "Calculate the power for", numServers, "servers", power, "W"
 		return power
 	
 	"""
@@ -114,7 +118,7 @@ class Simulator:
 			# Load
 			solver.options.loadDelay = self.workload.deferrable
 			solver.options.prevLoad = prevload
-			solver.options.minSize = self.calculateITPower(self.workload.minimum)
+			solver.options.minSize = self.calculateITPower(self.workload.minimum, minimum=True)
 			solver.options.maxSize = self.infra.it.getMaxPower()
 			# Power infrastructure costs
 			solver.options.netMeter = self.location.netmetering
@@ -164,17 +168,11 @@ class Simulator:
 				loadPower = self.calculateITPower(reqNodes)
 				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
 				# Default behavior
-				print "No solution at", timeStr(time)
 				brownpower = loadPower + coolingPower - greenpower
 				netpower = 0.0
 				if brownpower < 0.0:
 					netpower = -1.0*brownpower
 					brownpower = 0.0
-				print "load", loadPower
-				print "cooling", coolingPower
-				print "green", greenpower
-				print "net", netpower
-				print "brown", brownpower
 				# Load
 				workload = loadPower + coolingPower
 				execload = workload
@@ -197,8 +195,10 @@ class Simulator:
 				reqNodes = self.workload.getLoad(time)
 				loadPower = self.calculateITPower(reqNodes)
 				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
-				workload = round(loadPower + coolingPower, 4)
+				workload = loadPower + coolingPower
 				execload = round(sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'], 4)
+				
+				#print timeStr(time), prevload, workload, execload, sol['LoadBatt[0]'], sol['LoadGreen[0]'], sol['LoadBrown[0]']
 				# Delay load
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load

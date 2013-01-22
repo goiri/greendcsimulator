@@ -7,6 +7,7 @@ class Workload:
 		self.deferrable = False
 		self.minimum = 0.0
 		self.repeat = False
+		self.scale = 1.0
 		self.load = self.readValues(filename)
 	
 	def readValues(self, filename=None):
@@ -35,6 +36,8 @@ class Workload:
 								self.repeat = True
 						elif key.startswith('workload.minimum'):
 							self.minimum = float(value)
+						elif key.startswith('workload.scale'):
+							self.scale = float(value)
 					elif line != '':
 						t, v = line.split(' ')
 						t = parseTime(t)
@@ -53,14 +56,14 @@ class Workload:
 	def getLoad(self, time):
 		if time <= self.load[0][0]:
 			t, load = self.load[0]
-			return load
+			return load*self.scale
 		elif time >= self.load[-1][0]:
 			t, load = self.load[-1]
-			return load
+			return load*self.scale
 		else:
 			for i in range(0, len(self.load)):
 				if time >= self.load[i][0] and time < self.load[i+1][0]:
-					return interpolate(self.load[i], self.load[i+1], time)
+					return interpolate(self.load[i], self.load[i+1], time)*self.scale
 		return None
 
 if __name__ == "__main__":
