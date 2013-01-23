@@ -20,7 +20,7 @@ wind.data =
 # Electricity
 brown.energy = data/parasol.brown
 brown.power  = 13.72 #$/kW
-brown.netmetering = 0.9 # 100%
+brown.netmetering = 0.4 # 40%
 
 # Temperature
 temperature = data/parasol.temperature

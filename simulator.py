@@ -18,10 +18,14 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
-* Experiment in crypt02
+* Net metering percentage: --net
 * Logging (50%)
+* Experiments running in crypt02
+* ASPLOS workload
+* Infrastructure for long experiments in servers
 * Amortization periods calculation
 * Battery lifetime model
+* Losses net metering: the default is 0.4
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -282,6 +286,8 @@ if __name__ == "__main__":
 	# Load
 	parser.add_option('-d', '--delay',    dest='delay',    action="store_true",  help='specify if we can delay the load')
 	parser.add_option('-o', '--alwayson', dest='alwayson', action="store_true",  help='specify if the system is always on')
+	# Location
+	parser.add_option('--net',            dest='netmeter', type="float", help='specify the net metering revenue', default=None)
 	
 	(options, args) = parser.parse_args()
 	
@@ -297,6 +303,8 @@ if __name__ == "__main__":
 		simulator.infra.solar.capacity = options.solar
 	if options.delay == True:
 		simulator.workload.deferrable = True
+	if options.netmeter != None:
+		simulator.location.netmetering = options.netmeter
 	simulator.infra.printSummary()
 	
 	# Run simulation
