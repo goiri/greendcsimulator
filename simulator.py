@@ -18,11 +18,10 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
+* Experiment in crypt02
 * Logging (50%)
-* Make load based on nodes not in power
-* Scale for workloads
-* Battery lifetime model
 * Amortization periods calculation
+* Battery lifetime model
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -276,20 +275,26 @@ if __name__ == "__main__":
 	# Period
 	parser.add_option('-p', '--period',   dest='period',   help='specify the infrastructure file', default='1y')
 	# Infrastructure options
-	parser.add_option('-s', '--solar',    dest='solar',   action="store_false", help='specify the infrastructure has solar')
-	parser.add_option('-b', '--battery',  dest='battery', action="store_false", help='specify the infrastructure has solar')
+	parser.add_option('-s', '--solar',    dest='solar',     type="float", help='specify the infrastructure has solar', default=None)
+	parser.add_option('-b', '--battery',  dest='battery',   type="float", help='specify the infrastructure has batteries', default=None)
+	parser.add_option('--nosolar',        dest='nosolar',   action="store_true", help='specify the infrastructure has no solar')
+	parser.add_option('--nobattery',      dest='nobattery', action="store_true", help='specify the infrastructure has no batteries')
 	# Load
-	parser.add_option('-d', '--delay',    dest='delay',   action="store_true",  help='specify if we can delay the load')
-	parser.add_option('-o', '--alwayson', dest='alwayson',action="store_true",  help='specify if the system is always on')
+	parser.add_option('-d', '--delay',    dest='delay',    action="store_true",  help='specify if we can delay the load')
+	parser.add_option('-o', '--alwayson', dest='alwayson', action="store_true",  help='specify if the system is always on')
 	
 	(options, args) = parser.parse_args()
 	
 	# Initialize simulator
 	simulator = Simulator(options.infra, options.location, options.workload, parseTime(options.period), turnoff=not options.alwayson)
-	if options.battery == False:
+	if options.nobattery == True:
 		simulator.infra.battery.capacity = 0.0
-	if options.solar == False:
+	if options.nosolar == True:
 		simulator.infra.solar.capacity = 0.0
+	if options.battery != None:
+		simulator.infra.battery.capacity = options.battery
+	if options.solar != None:
+		simulator.infra.solar.capacity = options.solar
 	if options.delay == True:
 		simulator.workload.deferrable = True
 	simulator.infra.printSummary()
