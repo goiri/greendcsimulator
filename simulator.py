@@ -18,14 +18,12 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
-* Net metering percentage: --net
-* Logging (50%)
+* Check why the executed load is higher than the load
+* Logging (80%)
 * Experiments running in crypt02
-* ASPLOS workload
 * Infrastructure for long experiments in servers
 * Amortization periods calculation
 * Battery lifetime model
-* Losses net metering: the default is 0.4
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -251,7 +249,7 @@ class Simulator:
 			# DEBUG
 			#print timeStr(time), sol['PeakBrown'], peakbrown
 			#print timeStr(time), '\t%.1f'%brownpower, '\t%.1f'%greenpower, '\t%.1f'%netpower, '\t%.1f'%batcharge, '\t%.1f'%batdischarge, '\t%.1f' % (100.0*solver.options.batIniCap/solver.options.batCap), '\t%.1f' % (solver.options.previousPeak)
-			print '%10s' % timeStr(time), '\t%6.1f' % workload, '\t%6.1f' % coolingpower, '\t%6.1f' % execload, '\t%6.1f' % (execload-workload), '\t', prevload
+			#print '%10s' % timeStr(time), '\t%6.1f' % workload, '\t%6.1f' % coolingpower, '\t%6.1f' % execload, '\t%6.1f' % (execload-workload), '\t', prevload
 			
 			# Operational costs
 			# Grid electricity
