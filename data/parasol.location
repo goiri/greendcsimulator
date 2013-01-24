@@ -8,11 +8,13 @@ longitude = -74.46073
 #solar.efficiency = 0.97 # 97%
 # Solar in Newark
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,NEWARK_INTERNATIONAL_ARPT
-solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,QUITO
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,ASWAN
+solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT
+solar.offset = -182d5h
 solar.capacity = 1 # W
-solar.efficiency = 0.97 # 97%
+solar.efficiency = 0.97 #  97%
+solar.efficiency = 1.00 # 100%
 
 # Wind
 wind.data = 

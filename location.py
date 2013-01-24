@@ -17,6 +17,7 @@ class Location:
 		self.brownpowerprice = None
 		self.netmetering = None
 		# Read current location
+		self.filename = filename
 		self.read(filename)
 		
 	def read(self, filename=None):
@@ -47,6 +48,11 @@ class Location:
 								for i in range(0, len(self.solar)):
 									t, v = self.solar[i]
 									self.solar[i] = (t, v/efficiency)
+							elif key.startswith('solar.offset'):
+								offset = parseTime(value)
+								for i in range(0, len(self.solar)):
+									t, v = self.solar[i]
+									self.solar[i] = (t+offset, v)
 						elif key.startswith('wind.'):
 							# Read file with the wind
 							self.wind = self.readValues(value)

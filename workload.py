@@ -8,6 +8,7 @@ class Workload:
 		self.minimum = 0.0
 		self.repeat = False
 		self.scale = 1.0
+		self.filename = filename
 		self.load = self.readValues(filename)
 	
 	def readValues(self, filename=None):

@@ -1,3 +1,6 @@
+workload.deferrable = false
+workload.minimum = 8
+workload.repeat = true
 0	3.0
 900	9.57142857143
 1800	35.7777777778

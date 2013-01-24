@@ -2,6 +2,7 @@
 
 DATA_PATH = 'data/'
 
+LOG_PATH = 'results/'
 
 SIMULATIONTIME = 10*365*24*60*60 # 10 years
 SIMULATIONTIME = 365*24*60*60 # 1 years

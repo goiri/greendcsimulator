@@ -36,6 +36,30 @@ class Simulator:
 		# Workload
 		self.turnoff = turnoff
 	
+	def getLogFilename(self):
+		filename = LOG_PATH+'/result'
+		# Solar
+		filename += '-%d' % self.infra.battery.capacity
+		# Battery
+		filename += '-%d' % self.infra.solar.capacity
+		# Period
+		filename += '-%s' % timeStr(self.period)
+		# Net metering
+		if self.location.netmetering > 0.0:
+			filename += '-net%.2f' % self.location.netmetering
+		# Workload
+		workloadname = self.workload.filename
+		workloadname = workloadname[workloadname.rfind('/')+1:workloadname.rfind('.')]
+		filename += '-%s' % workloadname
+		# Delay
+		if self.workload.deferrable == True:
+			filename += '-delay'
+		# Always on
+		if self.turnoff == False:
+			filename += '-on'
+		filename += '.log'
+		return filename
+	
 	"""
 	Calculate the load based on the number of servers
 	"""
@@ -99,7 +123,7 @@ class Simulator:
 			
 		# Logging file
 		try:
-			fout = open('results.log', 'w')
+			fout = open(self.getLogFilename(), 'w')
 			fout.write('# Time\tBPrice\tGreen\tNetMet\tBrown\tBatChar\tBatDisc\tBatLevel\tWorload\tCooling\tExLoad\tPrLoad\n')
 		except Exception, e:
 			fout = None
@@ -227,6 +251,7 @@ class Simulator:
 			# DEBUG
 			#print timeStr(time), sol['PeakBrown'], peakbrown
 			#print timeStr(time), '\t%.1f'%brownpower, '\t%.1f'%greenpower, '\t%.1f'%netpower, '\t%.1f'%batcharge, '\t%.1f'%batdischarge, '\t%.1f' % (100.0*solver.options.batIniCap/solver.options.batCap), '\t%.1f' % (solver.options.previousPeak)
+			print '%10s' % timeStr(time), '\t%6.1f' % workload, '\t%6.1f' % coolingpower, '\t%6.1f' % execload, '\t%6.1f' % (execload-workload), '\t', prevload
 			
 			# Operational costs
 			# Grid electricity

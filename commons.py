@@ -28,7 +28,9 @@ def interpolate(p1, p2, x):
 
 def parseTime(line):
 	ret = 0
-	if line.find('y') >= 0:
+	if line.startswith('-'):
+		ret = -1*parseTime(line[1:])
+	elif line.find('y') >= 0:
 		val = int(line[:line.find('y')]) * 365 * 24 * 60 * 60
 		ret += val + parseTime(line[line.find('y')+len('y'):])
 	elif line.find('w') >= 0:
