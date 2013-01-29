@@ -10,8 +10,9 @@ from workload import *
 
 # GreenSwitch
 import sys
-sys.path.append('/home/goiri/hadoop-parasol')
-sys.path.append('/home/goirix/hadoop-parasol')
+#sys.path.append('/home/goiri/hadoop-parasol')
+#sys.path.append('/home/goirix/hadoop-parasol')
+sys.path.append('parasolsolver')
 from parasolsolver import ParasolModel
 from parasolsolvercommons import TimeValue
 
@@ -126,6 +127,7 @@ class Simulator:
 		except Exception, e:
 			fout = None
 			print e
+		
 		for t in range(0, self.period/TIMESTEP):
 			time = t*TIMESTEP
 			brownenergyprice = self.location.getBrownPrice(time)
