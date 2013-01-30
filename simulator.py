@@ -292,7 +292,7 @@ class Simulator:
 			fout.write('# Brown energy: $%.2f\n' % (costbrownenergy))
 			fout.write('# Peak brown power: $%.2f\n' % (costbrownpower))
 			fout.write('# Infrastructure: $%.2f\n' % (costinfrastructure))
-			fout.write('# Total 1 year: $%.2f\n' % (costbrownenergy+costbrownpower+costinfrastructure))
+			fout.write('# Total: $%.2f\n' % (costbrownenergy+costbrownpower+costinfrastructure))
 			fout.close()
 
 if __name__ == "__main__":
