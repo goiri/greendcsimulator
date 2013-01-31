@@ -87,6 +87,16 @@ def parseEnergy(line):
 		ret = float(line)
 	return ret
 
+def parseCost(line):
+	ret = 0.0
+	line = line.strip()
+	if line.startswith('$'):
+		ret = float(line[1:])
+	return ret
+
+def costStr(cost):
+	return '$%.2f' % cost
+
 def timeStr(time):
 	ret = ''
 	# Years

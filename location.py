@@ -70,7 +70,7 @@ class Location:
 								# Read file with the temperature
 								self.netmetering = float(value)
 
-	def readPlacementData(self, filename, locationname):
+	def readPlacementData(self, filename, locationname, offset=0):
 		ret = []
 		with open(filename, 'r') as f:
 			token  = "NONE"
@@ -104,15 +104,21 @@ class Location:
 							d = i
 							seconds = (m-1)*31*24*60*60 + (d-1)*24*60*60 + (h-1)*60*60
 							value = float(aux[i1])
-							ret.append((seconds, value))
+							ret.append((seconds+offset, value))
 							i1 += 1
 		# Sort it and return
 		return sorted(ret, key=itemgetter(0))
 
 	def readValues(self, filename=None):
 		if filename.find(",")>=0:
-			auxfilename, auxlocation = filename.split(",")
-			return self.readPlacementData(auxfilename, auxlocation)
+			split = filename.split(",")
+			offset = 0
+			if len(split) > 2:
+				auxfilename, auxlocation, offset = split
+				offset = parseTime(offset)
+			else:
+				auxfilename, auxlocation = split
+			return self.readPlacementData(auxfilename, auxlocation, offset=offset)
 		else:
 			ret = []
 			if filename == '':
