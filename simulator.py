@@ -19,11 +19,9 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
-* Check why the executed load is higher than the load
-* Logging (80%)
-* Experiments running in crypt02
-* Infrastructure for long experiments in servers
-* Amortization periods calculation
+* Check why in some experiments the executed load is higher than the load
+* Add DC size to log name
+* Infrastructure for long experiments in multiple servers (50%)
 * Battery lifetime model
 """
 class Simulator:

@@ -94,9 +94,6 @@ def parseCost(line):
 		ret = float(line[1:])
 	return ret
 
-def costStr(cost):
-	return '$%.2f' % cost
-
 def timeStr(time):
 	ret = ''
 	# Years
@@ -140,9 +137,9 @@ def costStr(cost):
 		return '$&infin;'
 	elif cost > 10*1000*1000*1000 or cost < -10*1000*1000*1000:
 		return '$%.1fG' % (cost/(1000.0*1000.0*1000.0))
-	elif cost > 1000*1000 or cost < -1000*1000:
+	elif cost > 9999*1000 or cost < -9999*1000:
 		return '$%.1fM' % (cost/(1000.0*1000.0))
-	elif cost > 1000 or cost < -1000:
+	elif cost > 9999 or cost < -9999:
 		return '$%.1fk' % (cost/(1000.0))
 	elif cost == 0:
 		return '-'

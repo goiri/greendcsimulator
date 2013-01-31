@@ -7,6 +7,8 @@ from operator import itemgetter
 from commons import *
 from conf import *
 
+TOTAL_YEARS = 10
+
 def cmpsetup(x, y):
 	if x.turnoff == y.turnoff:
 		if x.deferrable == y.deferrable:
@@ -168,65 +170,75 @@ if __name__ == "__main__":
 		fout.write('<th width="90px">Peak</th>\n')
 		fout.write('<th width="150px" colspan="2">OPEX</th>\n')
 		fout.write('<th width="90px">CAPEX</th>\n')
-		fout.write('<th width="150px" colspan="2">Total</th>\n')
+		fout.write('<th width="150px" colspan="2">Total (1 year)</th>\n')
+		fout.write('<th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
 		fout.write('<th width="90px">Savings</th>\n')
 		fout.write('<th width="90px">Ammortization</th>\n')
 		fout.write('</tr>\n')
 		for scenario in results:
-			# Get baseline
-			basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[1]
-			# Show result
-			for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
-				fout.write('<tr>\n')
-				# Setup
-				if setup.solar == 0:
-					fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-				else:
-					fout.write('<td align="right">%s</td>\n' % powerStr(setup.solar))
-				if setup.battery == 0:
-					fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-				else:
-					fout.write('<td align="right">%s</td>\n' % energyStr(setup.battery))
-				fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
-				fout.write('<td align="right">%s</td>\n' % timeStr(scenario.period))
-				fout.write('<td align="right">%s</td>\n' % scenario.workload.title())
-				if setup.deferrable:
-					fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
-				else:
-					fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-				if setup.turnoff:
-					fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
-				else:
-					fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+			try:
+				# Get baseline
+				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
+				# Show result
+				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
+					fout.write('<tr>\n')
+					# Setup
+					if setup.solar == 0:
+						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+					else:
+						fout.write('<td align="right">%s</td>\n' % powerStr(setup.solar))
+					if setup.battery == 0:
+						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+					else:
+						fout.write('<td align="right">%s</td>\n' % energyStr(setup.battery))
+					fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
+					fout.write('<td align="right">%s</td>\n' % timeStr(scenario.period))
+					fout.write('<td align="right">%s</td>\n' % scenario.workload.title())
+					if setup.deferrable:
+						fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
+					else:
+						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+					if setup.turnoff:
+						fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
+					else:
+						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+						
+					# Costs
+					fout.write('<td align="right">%s</td>\n' % costStr(cost.energy))
+					fout.write('<td align="right">%s</td>\n' % costStr(cost.peak))
+					fout.write('<td align="right">%s</td>\n' % costStr(cost.getOPEX()))
+					fout.write('<td>\n')
+					fout.write(getBarChart([cost.energy, cost.peak], 2.5*1000, width=100))
+					fout.write('</td>\n')
+					fout.write('<td align="right">%s</td>\n' % costStr(cost.getCAPEX()))
+					# Total cost
+					fout.write('<td align="right">%s</td>\n' % costStr(cost.getTotal()))
+					fout.write('<td>\n')
+					fout.write(getBarChart([cost.energy, cost.peak, cost.capex], 26*1000, width=150))
+					fout.write('</td>\n')
+					# Total in N years
+					fout.write('<td align="right">%s</td>\n' % costStr(cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX()))
+					fout.write('<td>\n')
+					fout.write(getBarChart([cost.energy*TOTAL_YEARS, cost.peak*TOTAL_YEARS, cost.capex], 42*1000, width=150))
+					fout.write('</td>\n')
 					
-				# Costs
-				fout.write('<td align="right">%s</td>\n' % costStr(cost.energy))
-				fout.write('<td align="right">%s</td>\n' % costStr(cost.peak))
-				fout.write('<td align="right">%s</td>\n' % costStr(cost.getOPEX()))
-				fout.write('<td>\n')
-				fout.write(getBarChart([cost.energy, cost.peak], 2.5*1000, width=100))
-				fout.write('</td>\n')
-				fout.write('<td align="right">%s</td>\n' % costStr(cost.getCAPEX()))
-				fout.write('<td align="right">%s</td>\n' % costStr(cost.getTotal()))
-				fout.write('<td>\n')
-				fout.write(getBarChart([cost.energy, cost.peak, cost.capex], 20*1000, width=200))
-				fout.write('</td>\n')
-				
-				# Calculate ammortization
-				# Saving compare to baseline
-				saveopexmonth = basecost.getOPEX() - cost.getOPEX()
-				savecapex =  cost.getCAPEX() - basecost.getCAPEX()
-				ammortization = 0.0
-				if saveopexmonth != 0.0:
-					ammortization = float(savecapex)/float(saveopexmonth)/12.0
-				fout.write('<td align="right">%s</td>\n' % costStr(saveopexmonth))
-				if saveopexmonth < 0:
-					fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-				elif saveopexmonth == 0:
-					fout.write('<td align="center"></td>\n')
-				else:
-					fout.write('<td align="right">%.1f years</td>\n' % ammortization)
-				fout.write('<tr/>\n')
+					# Calculate ammortization
+					# Saving compare to baseline
+					saveopexyear = basecost.getOPEX() - cost.getOPEX()
+					savecapex =  cost.getCAPEX() - basecost.getCAPEX()
+					ammortization = 0.0
+					if saveopexyear != 0.0:
+						ammortization = float(savecapex)/float(saveopexyear)
+					fout.write('<td align="right">%s</td>\n' % costStr(saveopexyear))
+					if saveopexyear < 0:
+						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+					elif saveopexyear == 0:
+						fout.write('<td align="center"></td>\n')
+					else:
+						fout.write('<td align="right">%.1f years</td>\n' % ammortization)
+					fout.write('<tr/>\n')
+			except Exception, e:
+				print 'Error:', e
 		fout.write('</table>\n')
 		fout.write('</body>\n')
 		fout.write('</html>\n')
