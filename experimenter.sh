@@ -9,7 +9,22 @@ NETMETER_0=0.0
 NETMETER_WR=0.4
 NETMETER_RR=1.0
 
-if true; then
+if false; then
+	i=0
+	for SOLAR in 0 800 1600 2400 3200; do
+		for BATTERY in 0 8000 16000 24000 32000; do
+			for DELAY in "" "--delay"; do
+				for ALWAYSON in "" "--alwayson"; do
+					echo "bash simulator.sh --solar 3200 --battery 32000  --period $PERIOD --workload $WORKLOAD --net $NETMETER_WR $DELAY $ALWAYSON"
+					let i=$i+1
+				done
+			done
+		done
+	done
+	echo $i
+fi
+
+if false; then
 	bash simulator.sh --solar    0 --battery     0  --period $PERIOD --workload $WORKLOAD --net $NETMETER_WR --alwayson
 	bash simulator.sh --solar 3200 --battery     0  --period $PERIOD --workload $WORKLOAD --net $NETMETER_WR
 	bash simulator.sh --solar 2400 --battery     0  --period $PERIOD --workload $WORKLOAD --net $NETMETER_WR
