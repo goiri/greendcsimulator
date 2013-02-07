@@ -22,7 +22,9 @@ TODO list:
 * Check why in some experiments the executed load is higher than the load
 * Add DC size to log name
 * Infrastructure for long experiments in multiple servers (50%)
-* Battery lifetime model
+* Battery lifetime model (50% parser)
+* Provide better data for the power consumption of the ATOMs
+* On/off peak prices around the world are tricky. We dont have summar/winter pricings
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -35,6 +37,8 @@ class Simulator:
 	
 	def getLogFilename(self):
 		filename = LOG_PATH+'/result'
+		# Size
+		filename += '-%.1f' % self.infra.it.getMaxPower()
 		# Solar
 		filename += '-%d' % self.infra.battery.capacity
 		# Battery
@@ -48,6 +52,9 @@ class Simulator:
 		workloadname = self.workload.filename
 		workloadname = workloadname[workloadname.rfind('/')+1:workloadname.rfind('.')]
 		filename += '-%s' % workloadname
+		# Location
+		if self.location.name != None:
+			filename += '-%s' % self.location.name
 		# Delay
 		if self.workload.deferrable == True:
 			filename += '-delay'
@@ -59,6 +66,7 @@ class Simulator:
 	
 	"""
 	Calculate the load based on the number of servers
+	"""
 	"""
 	def calculateITPower(self, numServers, minimum=False):
 		power = 0.0
@@ -89,6 +97,7 @@ class Simulator:
 				else:
 					power += self.infra.it.racks[rackId].servers[serverId].powers3
 		return power
+	"""
 	
 	"""
 	Run simulation
@@ -146,7 +155,7 @@ class Simulator:
 			# Load
 			solver.options.loadDelay = self.workload.deferrable
 			solver.options.prevLoad = prevload
-			solver.options.minSize = self.calculateITPower(self.workload.minimum, minimum=True)
+			solver.options.minSize = self.infra.it.getPower(self.workload.minimum, minimum=True, turnoff=self.turnoff)
 			solver.options.maxSize = self.infra.it.getMaxPower()
 			# Power infrastructure costs
 			solver.options.netMeter = self.location.netmetering
@@ -176,7 +185,7 @@ class Simulator:
 			worklPredi = []
 			for predhour in range(0, 24):
 				reqNodes = self.workload.getLoad(time + predhour*60*60)
-				loadPower = self.calculateITPower(reqNodes)
+				loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
 				w = loadPower + coolingPower
 				g = self.location.getSolar(time + predhour*60*60) * self.infra.solar.capacity * self.infra.solar.efficiency
@@ -194,7 +203,7 @@ class Simulator:
 				print "No solution at", timeStr(time)
 				# Calculate workload: Get the number of nodes required
 				reqNodes = self.workload.getLoad(time)
-				loadPower = self.calculateITPower(reqNodes)
+				loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
 				# Default behavior
 				brownpower = loadPower + coolingPower - greenpower
@@ -222,7 +231,7 @@ class Simulator:
 				battery += (TIMESTEP/3600.0) * batpower
 				# Load
 				reqNodes = self.workload.getLoad(time)
-				loadPower = self.calculateITPower(reqNodes)
+				loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
 				workload = loadPower + coolingPower
 				execload = round(sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'], 4)
@@ -231,7 +240,7 @@ class Simulator:
 				# Delay load
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
-					prevload += workload - execload
+					prevload += (workload - execload)*(TIMESTEP/3600.0)
 				# State
 				if sol['BattBrown[0]'] + sol['BattGreen[0]'] > 0:
 					stateChargeBattery = True
@@ -269,6 +278,9 @@ class Simulator:
 			# Logging
 			if fout != None:
 				fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, coolingpower, execload, prevload))
+
+			# TODO remove
+			print '%d\t%6.1f\t%6.1f\t%6.1f' % (time, greenpower, brownpower, peakbrown)
 
 		# Account for the last month
 		costbrownpower += self.location.brownpowerprice * peakbrown/1000.0

@@ -5,12 +5,24 @@ from commons import *
 
 from operator import itemgetter
 
+"""
+Defines a location.
+"""
 class Location:
 	def __init__(self, filename=None):
+		self.name = None
 		self.lat = None
 		self.lng = None
+		# Solar
 		self.solar = None
+		self.solarefficiency = 1.0
+		self.solarcapacity = 1.0
+		self.solaroffset = 0.0
+		# Wind
 		self.wind =  None
+		self.windefficiency = 1.0
+		self.windcapacity = 1.0
+		self.windoffset = 0.0
 		self.temperature = None
 		# Brown
 		self.brownenergyprice = None
@@ -37,25 +49,40 @@ class Location:
 							self.lng = float(value)
 						elif key.startswith('solar.'):
 							if key.startswith('solar.data'):
-								self.solar = self.readValues(value)
+								split = value.split(',')
+								if len(split) > 0:
+									filename = split[0]
+									location = None
+									if len(split) >= 2:
+										location = split[1]
+									if len(split) >= 3:
+										self.solaroffset = parseTime(split[2])
+									# Read data
+									self.solar = self.readValues(filename, location)
 							elif key.startswith('solar.capacity'):
-								capacity = float(value)
-								for i in range(0, len(self.solar)):
-									t, v = self.solar[i]
-									self.solar[i] = (t, v/capacity)
+								self.solarcapacity = float(value)
 							elif key.startswith('solar.efficiency'):
-								efficiency = float(value)
-								for i in range(0, len(self.solar)):
-									t, v = self.solar[i]
-									self.solar[i] = (t, v/efficiency)
+								self.solarefficiency = float(value)
 							elif key.startswith('solar.offset'):
-								offset = parseTime(value)
-								for i in range(0, len(self.solar)):
-									t, v = self.solar[i]
-									self.solar[i] = (t+offset, v)
+								self.solaroffset = parseTime(value)
 						elif key.startswith('wind.'):
-							# Read file with the wind
-							self.wind = self.readValues(value)
+							if key.startswith('wind.data'):
+								split = value.split(',')
+								if len(split) > 0:
+									filename = split[0]
+									location = None
+									if len(split) >= 2:
+										location = split[1]
+									if len(split) >= 3:
+										self.windoffset = parseTime(split[2])
+									# Read data
+									self.wind = self.readValues(filename, location)
+							elif key.startswith('wind.capacity'):
+								self.windcapacity = float(value)
+							elif key.startswith('wind.efficiency'):
+								self.windefficiency = float(value)
+							elif key.startswith('wind.offset'):
+								self.windoffset = parseTime(value)
 						elif key.startswith('temperature'):
 							# Read file with the temperature
 							self.temperature = self.readValues(value)
@@ -69,10 +96,11 @@ class Location:
 							elif key.startswith('brown.netmetering'):
 								# Read file with the temperature
 								self.netmetering = float(value)
-
-	def readPlacementData(self, filename, locationname, offset=0):
+	
+	def readPlacementData(self, filename, locationname):
 		ret = []
 		with open(filename, 'r') as f:
+			self.name = locationname
 			token  = "NONE"
 			ltoken = "NONE"
 			for line in f.readlines():
@@ -104,12 +132,13 @@ class Location:
 							d = i
 							seconds = (m-1)*31*24*60*60 + (d-1)*24*60*60 + (h-1)*60*60
 							value = float(aux[i1])
-							ret.append((seconds+offset, value))
+							ret.append((seconds, value))
 							i1 += 1
 		# Sort it and return
 		return sorted(ret, key=itemgetter(0))
 
-	def readValues(self, filename=None):
+	def readValues(self, filename=None, location=None):
+		"""
 		if filename.find(",")>=0:
 			split = filename.split(",")
 			offset = 0
@@ -119,6 +148,9 @@ class Location:
 			else:
 				auxfilename, auxlocation = split
 			return self.readPlacementData(auxfilename, auxlocation, offset=offset)
+		"""
+		if location != None:
+			return self.readPlacementData(filename, location)
 		else:
 			ret = []
 			if filename == '':
@@ -150,34 +182,39 @@ class Location:
 		return None
 		
 	def getSolar(self, time):
-		if len(self.solar) == 0:
-			return 0.0
-		else:
-			if time <= self.solar[0][0]:
+		ret = 0.0
+		offsettime = time - self.solaroffset
+		#offsettime = time + self.solaroffset
+		if len(self.solar) > 0:
+			if offsettime <= self.solar[0][0]:
 				t, solar = self.solar[0]
-				return solar
-			elif time >= self.solar[-1][0]:
+				ret = solar
+			elif offsettime >= self.solar[-1][0]:
 				t, solar = self.solar[-1]
-				return solar
+				ret = solar
 			else:
 				for i in range(0, len(self.solar)):
-					if time >= self.solar[i][0] and time < self.solar[i+1][0]:
-						return interpolate(self.solar[i], self.solar[i+1], time)
+					if offsettime >= self.solar[i][0] and offsettime < self.solar[i+1][0]:
+						ret = interpolate(self.solar[i], self.solar[i+1], offsettime)
+						break
+		return (ret/self.solarefficiency)/self.solarcapacity
 		
 	def getWind(self, time):
-		if len(self.wind) == 0:
-			return 0.0
-		else:
-			if time <= self.wind[0][0]:
+		ret = 0.0
+		offsettime = time - self.windoffset
+		if len(self.wind) > 0:
+			if offsettime <= self.wind[0][0]:
 				t, wind = self.wind[0]
-				return wind
-			elif time >= self.wind[-1][0]:
+				ret = wind
+			elif offsettime >= self.wind[-1][0]:
 				t, wind = self.wind[-1]
-				return wind
+				ret =  wind
 			else:
 				for i in range(0, len(self.wind)):
-					if time >= self.wind[i][0] and time < self.wind[i+1][0]:
-						return interpolate(self.wind[i], self.wind[i+1], time)
+					if offsettime >= self.wind[i][0] and offsettime < self.wind[i+1][0]:
+						ret = interpolate(self.wind[i], self.wind[i+1], offsettime)
+						break
+		return (ret/self.windefficiency)/self.windcapacity
 	
 	def getBrownPrice(self, time):
 		for i in range(0, len(self.brownenergyprice)):

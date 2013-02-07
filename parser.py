@@ -2,9 +2,10 @@
 
 import os
 import os.path
+import time
 import datetime
 
-from subprocess import call
+from subprocess import Popen
 from operator import itemgetter
 
 from commons import *
@@ -13,8 +14,14 @@ from plotter import *
 
 TOTAL_YEARS = 20
 
-def getFilename(scenario, setup, cost):
+
+"""
+Get the filename related to the current setup
+"""
+def getFilename(scenario, setup):
 	filename = 'result'
+	# IT size
+	filename += '-%.1f' % setup.itsize
 	# Solar
 	filename += '-%d' % setup.battery
 	# Battery
@@ -26,18 +33,84 @@ def getFilename(scenario, setup, cost):
 		filename += '-net%.2f' % scenario.netmeter
 	# Workload
 	filename += '-%s' % scenario.workload
+	# Location
+	filename += '-%s' % setup.location
 	# Delay
 	if setup.deferrable == True:
 		filename += '-delay'
 	# Always on
 	if setup.turnoff == False:
 		filename += '-on'
-	#filename += '.log'
-	#print filename
 	return filename
 
+"""
+Get the depth of discharge information from the logfile
+"""
+def getDepthOfDischarge(logfile):
+	numdischarges = 0
+	totaldischarge = 0.0
+	maxdischarge = 0.0
+	try:
+		with open(logfile, 'r') as fin:
+			# Get battery size from file name
+			batterysize = int(logfile.split('-')[2])
+			# Read file and get info
+			prevbatpower = 0.0
+			charging = False
+			discharging = False
+			startbatlevel = None
+			for line in fin.readlines():
+				if not line.startswith('#'):
+					line = line.replace('\n', '')
+					lineSplit = line.split('\t')
+					# Get battery power
+					t =             int(lineSplit[0])
+					batcharge =     float(lineSplit[5])
+					batdischarge =  float(lineSplit[6])
+					batlevel =      float(lineSplit[7])
+					batpower = batcharge - batdischarge
+					
+					if batcharge > 0 and not charging:
+						charging = True
+						discharging = False
+						if startbatlevel != None:
+							batlevel0 = 100.0*startbatlevel/batterysize
+							batlevel1 = 100.0*prevbatlevel/batterysize
+							#print 'Disharging finished', timeStr(t), '%.1f%%'%(batlevel0), '->', '%.1f%%'%(batlevel1), '=', '%.1f%%'%(batlevel0-batlevel1)
+							# A discharge of more than 0.1%
+							if batlevel0 - batlevel1 > 0.1:
+								numdischarges += 1
+								totaldischarge += batlevel0 - batlevel1
+								if batlevel0 - batlevel1 > maxdischarge:
+									maxdischarge = batlevel0 - batlevel1
+						startbatlevel = batlevel
+					elif batdischarge > 0 and not discharging:
+						charging = False
+						discharging = True
+						#if startbatlevel != None:
+							#print 'Charging finished', timeStr(t), '%.1f%%'%(100.0*startbatlevel/batterysize), '->', '%.1f%%'%(100.0*batlevel/batterysize)
+						startbatlevel = batlevel
+					
+					# Store previous value
+					prevbatpower = batpower
+					prevbatlevel = batlevel
+	except Exception, e:
+		#print 'Error reading', logfile, e
+		pass
+	
+	"""
+	print logfile
+	print 'Number of discharges:', numdischarges
+	if numdischarges > 0:
+		print 'Average discharge: %.1f%%' % (totaldischarge/numdischarges)
+	print 'Total discharge: %.1f%%' % (totaldischarge)
+	print 'Maximum discharge: %.1f%%' % (maxdischarge)
+	"""
+	
+	return numdischarges, totaldischarge, maxdischarge
+
 def saveDetails(scenario, setup, cost):
-	with open(LOG_PATH+getFilename(scenario, setup, cost)+".html", 'w') as fout:
+	with open(LOG_PATH+getFilename(scenario, setup)+".html", 'w') as fout:
 		# Header
 		fout.write('<html>\n')
 		fout.write('<head>\n')
@@ -55,6 +128,8 @@ def saveDetails(scenario, setup, cost):
 		
 		fout.write('<h1>Setup</h1>\n')
 		fout.write('<ul>\n')
+		fout.write('<li>Location: %s</li>\n' % setup.location.replace('_', ' ').title())
+		fout.write('<li>IT: %s</li>\n' % powerStr(setup.itsize))
 		fout.write('<li>Solar: %s</li>\n' % powerStr(setup.solar))
 		fout.write('<li>Battery: %s</li>\n' % energyStr(setup.battery))
 		fout.write('</ul>\n')
@@ -75,36 +150,80 @@ def saveDetails(scenario, setup, cost):
 		fout.write('<li>Total: %s</li>\n' % costStr(cost.getTotal()))
 		fout.write('</ul>\n')
 		
+		fout.write('<h1>Battery</h1>\n')
+		#fout.write('<h1>Battery</h1>\n')
+		numdischarges, totaldischarge, maxdischarge = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
+		fout.write('<ul>\n')
+		fout.write('<li>Number of discharges: %d</li>\n' % numdischarges)
+		if numdischarges>0:
+			fout.write('<li>Average discharge: %.1f%%</li>\n' % (totaldischarge/numdischarges))
+			fout.write('<li>Maximum discharge: %.1f%%</li>\n' % (maxdischarge))
+			fout.write('<li>Total discharge: %.1f%%</li>\n' % totaldischarge)
+		fout.write('</ul>\n')
+		
+		
 		fout.write('<h1>Log</h1>\n')
 		fout.write('<ul>\n')
-		fout.write('<li><a href="%s">Log file</a></li>\n' % (getFilename(scenario, setup, cost)+'.log'))
+		fout.write('<li><a href="%s">Log file</a></li>\n' % (getFilename(scenario, setup)+'.log'))
 		fout.write('</ul>\n')
 		
 		# Figure for each month
 		fout.write('<h1>Graphics</h1>\n')
 		for i in range(1, 12+1):
 			fout.write('<h2>%s</h2>\n' % (datetime.date(2012, i, 1).strftime('%B')))
-			fout.write('<img src="%s"/>\n' % (getFilename(scenario, setup, cost)+'-'+str(i)+'.png'))
+			fout.write('<img src="%s"/><br/>\n' % ('img/'+getFilename(scenario, setup)+'-'+str(i)+'.png'))
+			fout.write('<img src="%s"/><br/>\n' % ('img/'+getFilename(scenario, setup)+'-'+str(i)+'-day.png'))
 		
 		# Footer
 		fout.write('</body>\n')
 		fout.write('<html>\n')
 
-def generateFigures(scenario, setup, cost):
+"""
+Generate figures for a setup and scenario
+"""
+def generateFigures(scenario, setup):
+	# Multi process
+	MAX_PROCESSES = 8
+	processes = []
 	# Generate data for plotting
-	inputfile =  LOG_PATH+getFilename(scenario, setup, cost)+'.log'
-	outputfile = LOG_PATH+getFilename(scenario, setup, cost)+'.data'
+	inputfile =  LOG_PATH+getFilename(scenario, setup)+'.log'
 	if os.path.isfile(inputfile):
-		genPlotData(inputfile, outputfile)
+		# Generate input data (make he figure boxed)
+		datafile = '/tmp/'+LOG_PATH+getFilename(scenario, setup)+'.data'
+		if not os.path.isdir(datafile[:datafile.rfind('/')]):
+			os.makedirs(datafile[:datafile.rfind('/')])
+		genPlotData(inputfile, datafile)
 		# Generate a figure for each month
 		for i in range(1, 12+1):
-			daystart = int(datetime.date(2012, i, 1).strftime('%j'))
+			daystart = int(datetime.date(2012, i, 1).strftime('%j'))-1
 			if i < 12:
 				dayend = int(datetime.date(2012, i+1, 1).strftime('%j'))
 			else:
 				dayend = int(datetime.date(2012, i, 31).strftime('%j'))
 			# Generate figure for each month
-			call(['bash', 'plot.bash', LOG_PATH+getFilename(scenario, setup, cost)+'.log', LOG_PATH+getFilename(scenario, setup, cost)+'-'+str(i)+'.png', '%d' % (daystart*24), '%d' % (dayend*24)])
+			auxoutfile = LOG_PATH+'img/'+getFilename(scenario, setup)+'-'+str(i)+'.png'
+			p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % (daystart*24), '%d' % (dayend*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+			processes.append(p)
+			
+			# Generate figure for each day
+			auxoutfile = LOG_PATH+'img/'+getFilename(scenario, setup)+'-'+str(i)+'-day.png'
+			p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % ((daystart+15)*24), '%d' % ((daystart+18)*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+			processes.append(p)
+			
+			# Wait until we only have 8 figures to go
+			while len(processes)>MAX_PROCESSES:
+				for p in processes:
+					if p.poll() != None:
+						processes.remove(p)
+				if len(processes)>MAX_PROCESSES:
+					time.sleep(0.5)
+	# Wait for everybody to finish
+	while len(processes)>0:
+		for p in processes:
+			if p.poll() != None:
+				processes.remove(p)
+		if len(processes)>0:
+			time.sleep(0.5)
 
 def cmpsetup(x, y):
 	if x.turnoff == y.turnoff:
@@ -149,7 +268,9 @@ class Cost:
 		return self.capex
 
 class Setup:
-	def __init__(self, solar=0.0, battery=0.0, deferrable=False, turnoff=False):
+	def __init__(self, itsize=0.0, solar=0.0, battery=0.0, location=None, deferrable=False, turnoff=False):
+		self.location = location
+		self.itsize = itsize
 		self.solar = solar
 		self.battery = battery
 		self.deferrable = deferrable
@@ -202,6 +323,7 @@ if __name__ == "__main__":
 				# Get data from filename
 				split = filename[:-4].split('-')
 				split.pop(0)
+				itsize = float(split.pop(0))
 				battery = int(split.pop(0))
 				solar = int(split.pop(0))
 				period = parseTime(split.pop(0))
@@ -211,6 +333,8 @@ if __name__ == "__main__":
 					netmeter = float(split.pop(0)[4:])
 				# Workload
 				workload = split.pop(0)
+				# Location
+				location = split.pop(0)
 				# Read the rest of the values
 				delay = False
 				alwayson = False
@@ -239,10 +363,16 @@ if __name__ == "__main__":
 							elif line.startswith('# Total:'):
 								#print 'Total:', line.split(' ')[2]
 								pass
+				# Calculate capex
+				"""
+				costcapex = 0.0
+				costcapex += 2.28 * solar
+				costcapex += 0.213 * battery
+				"""
 				# Store results
 				scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
 				cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex)
-				setup = Setup(solar=solar, battery=battery, deferrable=delay, turnoff=not alwayson)
+				setup = Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson)
 				#results[scenario] = Result(setup, cost)
 				if scenario not in results:
 					results[scenario] = []
@@ -253,8 +383,10 @@ if __name__ == "__main__":
 		fout.write('<table>\n')
 		fout.write('<tr>\n')
 		fout.write('<th></th>\n')
-		fout.write('<th colspan="4">Scenario</th>\n')
-		fout.write('<th colspan="4">Setup</th>\n')
+		fout.write('<th colspan="5"></th>\n')
+		fout.write('<th colspan="4"></th>\n')
+		#fout.write('<th colspan="5">Scenario</th>\n')
+		#fout.write('<th colspan="4">Setup</th>\n')
 		fout.write('<th colspan="9">Cost</th>\n')
 		fout.write('<th colspan="2">Savings</th>\n')
 		fout.write('</tr>\n')
@@ -263,6 +395,7 @@ if __name__ == "__main__":
 		fout.write('<th></th>\n')
 		fout.write('<th width="80px">DC Size</th>\n')
 		fout.write('<th width="80px">Period</th>\n')
+		fout.write('<th width="80px">Location</th>\n')
 		fout.write('<th width="80px">Net meter</th>\n')
 		fout.write('<th width="80px">Workload</th>\n')
 		fout.write('<th width="80px">Solar</th>\n')
@@ -282,14 +415,23 @@ if __name__ == "__main__":
 		for scenario in results:
 			try:
 				# Get baseline
+				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[50]
 				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
+						
 					fout.write('<tr>\n')
-					fout.write('<td align="center"><a href="%s">?</a></td>\n' % (getFilename(scenario, setup, cost)+'.html')) # Datacenter size TODO
+					if setup != basesetup:
+						fout.write('<td align="center"><a href="%s">?</a></td>\n' % (getFilename(scenario, setup)+'.html')) # Datacenter size TODO
+					else:
+						fout.write('<td align="center"><b><a href="%s">?</a></b></td>\n' % (getFilename(scenario, setup)+'.html')) # Datacenter size TODO
 					# Setup
-					fout.write('<td align="center"><font color="#999999">Parasol</font></td>\n') # Datacenter size TODO
+					if setup != basesetup:
+						fout.write('<td align="center"><font color="#999999">%s</font></td>\n' % powerStr(setup.itsize)) # Datacenter size TODO
+					else:
+						fout.write('<td align="center"><font color="#999999"><b>%s</b></font></td>\n' % powerStr(setup.itsize)) # Datacenter size TODO
 					fout.write('<td align="right">%s</td>\n' % timeStr(scenario.period))
+					fout.write('<td align="right">%s</td>\n' % setup.location.replace('_', ' ').title()[0:10])
 					fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
 					fout.write('<td align="right">%s</td>\n' % scenario.workload.title())
 					# Solar
@@ -324,12 +466,12 @@ if __name__ == "__main__":
 					# Total cost
 					fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getTotal()))
 					fout.write('<td>\n')
-					fout.write(getBarChart([cost.energy, cost.peak, cost.capex], 26*1000, width=150))
+					fout.write(getBarChart([cost.energy, cost.peak, cost.capex], 16*1000, width=150))
 					fout.write('</td>\n')
 					# Total in N years
 					fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX()))
 					fout.write('<td>\n')
-					fout.write(getBarChart([cost.energy*TOTAL_YEARS, cost.peak*TOTAL_YEARS, cost.capex], 42*1000, width=150))
+					fout.write(getBarChart([cost.energy*TOTAL_YEARS, cost.peak*TOTAL_YEARS, cost.capex], 44*1000, width=150))
 					fout.write('</td>\n')
 					
 					# Calculate ammortization
@@ -356,13 +498,21 @@ if __name__ == "__main__":
 	
 	# Generate detailed page for experiment
 	print 'Generating details...'
+	total = 0
 	for scenario in results:
 		for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
 			saveDetails(scenario, setup, cost)
+			total += 1
 	
 	# Generate figures
 	print 'Generating monthly figures...'
+	current = 0
+	last = datetime.datetime.now()
 	for scenario in results:
 		for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
-			generateFigures(scenario, setup, cost)
+			generateFigures(scenario, setup)
+			current+=1
+			if datetime.datetime.now()-last > datetime.timedelta(seconds=10):
+				print '%.1f%%' % (100.0*current/total)
+				last = datetime.datetime.now()
 	

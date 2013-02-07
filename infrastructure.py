@@ -92,6 +92,7 @@ class IT:
 		self.racks = {}
 		
 	def getMaxPower(self):
+		"""
 		maxPower = 0.0
 		for rackId in self.racks:
 			rack = self.racks[rackId]
@@ -102,6 +103,51 @@ class IT:
 				server = rack.servers[serverId]
 				maxPower += server.powerpeak
 		return maxPower
+		"""
+		maxServers = 0
+		for rackId in sorted(self.racks.keys()):
+			for serverId in self.racks[rackId].servers:
+				maxServers += 1
+		return self.getPower(maxServers)
+	
+	
+	"""
+	Calculate the load based on the number of servers
+	@param numServers
+	@param minimum
+	@param turnoff
+	"""
+	def getPower(self, numServers, minimum=False, turnoff=True):
+		power = 0.0
+		reqServers = numServers
+		# Walk the racks
+		for rackId in sorted(self.racks.keys()):
+			# Add switch power
+			rackUtilization = 1.0
+			if reqServers < len(self.racks[rackId].servers):
+				rackUtilization = math.ceil(reqServers) / float(len(self.racks[rackId].servers))
+			powerSwitchIdle = self.racks[rackId].switch.poweridle
+			powerSwitchPeak = self.racks[rackId].switch.powerpeak
+			power += powerSwitchIdle + rackUtilization*(powerSwitchPeak - powerSwitchIdle)
+			
+			# Walk the servers in the rack
+			for serverId in self.racks[rackId].servers:
+				# Add server power
+				if reqServers > 0:
+					if minimum:
+						power += self.racks[rackId].servers[serverId].poweridle
+					else:
+						power += self.racks[rackId].servers[serverId].powerpeak
+					reqServers -= 1
+					if reqServers < 0:
+						reqServers = 0
+				elif turnoff == False:
+					power += self.racks[rackId].servers[serverId].poweridle
+				else:
+					power += self.racks[rackId].servers[serverId].powers3
+		return power
+	
+	
 
 class Cooling:
 	def __init__(self):
@@ -236,9 +282,16 @@ class Infrastructure:
 
 # Main program
 if __name__ == "__main__":
-	infra = Infrastructure('parasol.infra')
+	infra = Infrastructure('data/parasol.infra')
 	
 	# Testing cooling
 	for outtemp in range(15, 38):
 		print outtemp, infra.cooling.getPower(outtemp)
+	
+	
+	print 'Nothing: %.1fW' % infra.it.getPower(0)
+	print 'Covering subset: %.1fW' % infra.it.getPower(8, minimum=True)
+	print 'Covering subset running: %.1fW' % infra.it.getPower(8)
+	print 'Peak: %.1fW' % infra.it.getPower(64)
+	print 'Peak: %.1fW' % infra.it.getMaxPower()
 	

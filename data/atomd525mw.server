@@ -1,3 +1,4 @@
 power.s3 = 1.5
 power.idle = 22
-power.peak = 30
+#power.peak = 30
+power.peak = 27.5

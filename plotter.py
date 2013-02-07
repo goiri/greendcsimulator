@@ -8,7 +8,7 @@ def genPlotData(inputfile, outputfile=None):
 	fout = None
 	if outputfile!=None:
 		fout = open(outputfile, 'w')
-	
+	# Read input file
 	with open(inputfile, 'r') as fin:
 		content = True
 		lineSplitPrev = None
@@ -46,10 +46,16 @@ def genPlotData(inputfile, outputfile=None):
 							fout.write( '\t'.join(lineSplit) + '\n')
 						lineSplitPrev = lineSplit
 					except Exception, e:
-						print line
+						pass
+						#print 'Error parsing line:', line
 			else:
 				pass
 
 if __name__ == "__main__":
+	inputfile = None
+	outputfile = None
 	if len(sys.argv) > 1:
-		genPlotData(sys.argv[1])
+		inputfile = sys.argv[1]
+	if len(sys.argv) > 2:
+		outputfile = sys.argv[2]
+	genPlotData(inputfile, outputfile)
