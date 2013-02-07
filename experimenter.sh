@@ -10,7 +10,7 @@ NETMETER_WR=0.4
 NETMETER_RR=1.0
 
 # Threading
-MAXTHREADS=16
+MAXTHREADS=`cat /proc/cpuinfo  | grep processor | wc -l`
 NUMTHREADS=0
 
 if true; then

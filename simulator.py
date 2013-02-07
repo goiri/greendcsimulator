@@ -227,8 +227,6 @@ class Simulator:
 				# Battery
 				batdischarge = sol['LoadBatt[0]']
 				batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
-				batpower = self.infra.battery.efficiency * batcharge - batdischarge
-				battery += (TIMESTEP/3600.0) * batpower
 				# Load
 				reqNodes = self.workload.getLoad(time)
 				loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
@@ -241,12 +239,33 @@ class Simulator:
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
 					prevload += (workload - execload)*(TIMESTEP/3600.0)
-				# State
-				if sol['BattBrown[0]'] + sol['BattGreen[0]'] > 0:
+					
+				# Fix solution
+				# Sometimes the solver says to run more than is there
+				if execload > workload+prevload:
+					execload = workload+prevload
+				# If we charge, we cannot do net metering
+				if batcharge>0 and netpower>0:
+					netpower = 0
+					batcharge += netpower
+				# If we have surplus green power, use it for what is being used before
+				if execload + batcharge + netpower < greenpower:
+					if batcharge > 0:
+						batcharge = greenpower - execload
+					else:
+						netpower = greenpower - execload
+				
+				# Charge battery
+				battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
+				if battery > self.infra.battery.capacity:
+					battery = self.infra.battery.capacity
+				
+				# Change state
+				if batcharge > 0:
 					stateChargeBattery = True
 				else:
 					stateChargeBattery = False
-				if sol['NetGreen[0]'] > 0:
+				if netpower > 0:
 					stateNetMeter = True
 				else:
 					stateNetMeter = False
@@ -269,7 +288,7 @@ class Simulator:
 			# Peak power accounting every month
 			peakbrownaccountingtime += TIMESTEP
 			if peakbrownaccountingtime >= 30*24*60*60: # One month
-				#print 'New month', timeStr(time) # TODO
+				#print 'New month', timeStr(time)
 				costbrownpower += self.location.brownpowerprice * peakbrown/1000.0
 				# Reseat accounting
 				peakbrownaccountingtime = 0
@@ -280,7 +299,7 @@ class Simulator:
 				fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, coolingpower, execload, prevload))
 
 			# TODO remove
-			print '%d\t%6.1f\t%6.1f\t%6.1f' % (time, greenpower, brownpower, peakbrown)
+			#print '%d\t%6.1f\t%6.1f\t%6.1f' % (time, greenpower, brownpower, peakbrown)
 
 		# Account for the last month
 		costbrownpower += self.location.brownpowerprice * peakbrown/1000.0
