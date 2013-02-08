@@ -160,7 +160,9 @@ class Simulator:
 			# Power infrastructure costs
 			solver.options.netMeter = self.location.netmetering
 			solver.options.peakCost = self.location.brownpowerprice
+			#solver.options.previousPeak = peakbrown
 			solver.options.previousPeak = 0.95*peakbrown
+			#solver.options.previousPeak = 0.0
 			# Battery
 			solver.options.batCap = self.infra.battery.capacity
 			solver.options.batIniCap = battery
@@ -179,24 +181,50 @@ class Simulator:
 			print "  Batt:", solver.options.batIniCap, solver.options.batCap, solver.options.batDischargeMax, '%.1f%%' % (100.0*solver.options.batIniCap/solver.options.batCap)
 			"""
 			
-			# Fill data with predictions
+			# Workload prediction
+			workloadPrediction = False
+			
+			# Fill data with actual values and predictions
 			greenAvail = []
 			brownPrice = []
 			worklPredi = []
 			for predhour in range(0, 24):
-				reqNodes = self.workload.getLoad(time + predhour*60*60)
-				loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
-				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
-				w = loadPower + coolingPower
-				g = self.location.getSolar(time + predhour*60*60) * self.infra.solar.capacity * self.infra.solar.efficiency
-				b = self.location.getBrownPrice(time + predhour*60*60)
-				greenAvail.append(TimeValue(predhour*60*60, g))
-				brownPrice.append(TimeValue(predhour*60*60, b))
-				worklPredi.append(TimeValue(predhour*60*60, w))
+				# Actual values
+				if predhour == 0:
+					# Workload
+					reqNodes = self.workload.getLoad(time)
+					reqNodes = self.workload.getLoad(time)
+					loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
+					coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time))
+					w = loadPower + coolingPower
+					worklPredi.append(TimeValue(0, w))
+					# Green available
+					greenAvail.append(TimeValue(0, greenpower))
+					# Brown price
+					b = self.location.getBrownPrice(time)
+					brownPrice.append(TimeValue(0, b))
+				# Predictions
+				else:
+					# Workload prediction
+					predseconds = predhour*60*60
+					#reqNodes = self.workload.getLoad(time + predseconds)
+					reqNodes = 0.0
+					for i in range(0, int(60.0*60.0/TIMESTEP)):
+						reqNodes += self.workload.getLoad(time + predseconds + i*TIMESTEP)
+					reqNodes = float(reqNodes)/(60.0*60.0/TIMESTEP)
+					loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
+					coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predseconds))
+					w = loadPower + coolingPower
+					worklPredi.append(TimeValue(predseconds, w))
+					# Green availability prediction: right now is perfect knowledge
+					g = self.location.getSolar(time + predseconds) * self.infra.solar.capacity * self.infra.solar.efficiency
+					greenAvail.append(TimeValue(predseconds, g))
+					# Brown price prediction
+					b = self.location.getBrownPrice(time + predseconds)
+					brownPrice.append(TimeValue(predseconds, b))
 			
 			# Generate solution
-			#peakbrown = 0.0
-			obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, load=worklPredi, previousPeak=0.95*peakbrown, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
+			obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
 			
 			# Check if GreenSwitch gives a solution
 			if sol == None:
@@ -204,7 +232,7 @@ class Simulator:
 				# Calculate workload: Get the number of nodes required
 				reqNodes = self.workload.getLoad(time)
 				loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
-				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time + predhour*60*60))
+				coolingPower = self.infra.cooling.getPower(self.location.getTemperature(time))
 				# Default behavior
 				brownpower = loadPower + coolingPower - greenpower
 				netpower = 0.0
@@ -234,7 +262,9 @@ class Simulator:
 				workload = loadPower + coolingPower
 				execload = round(sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'], 4)
 				
+				#print '%s\t%.2fW\t%.2fW\tPeak:%.2fW' % (timeStr(time), sol['LoadBrown[0]'], sol['LoadBatt[0]']+sol['LoadGreen[0]']+sol['LoadBrown[0]'], peakbrown)
 				#print timeStr(time), prevload, workload, execload, sol['LoadBatt[0]'], sol['LoadGreen[0]'], sol['LoadBrown[0]']
+				
 				# Delay load
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
@@ -269,6 +299,14 @@ class Simulator:
 					stateNetMeter = True
 				else:
 					stateNetMeter = False
+				"""
+				# Debug one one solution
+				if timeStr(time) == '17h' or timeStr(time) == '22h':
+					print '======================='
+					for t in range(0, solver.options.maxTime):
+						print t, '%6.1f'%sol['LoadBatt['+str(t)+']'], '%6.1f'%sol['LoadGreen['+str(t)+']'], '%6.1f'%sol['LoadBrown['+str(t)+']'], worklPredi[t].v
+					print '======================='
+				"""
 			
 			# Peak brown power
 			if brownpower > peakbrown:

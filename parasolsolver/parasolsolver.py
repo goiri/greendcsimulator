@@ -148,12 +148,12 @@ class ParasolModel:
 	"""
 	
 	
-	def solvePeak(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, previousPeak=0.0, stateChargeBattery=False, stateNetMeter=False):
-		return self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, steps=steps, previousPeak=previousPeak, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
+	def solvePeak(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
+		return self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, steps=steps, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
 	
 	# Gurobi solver
 	#def solve(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, peak=None, stateChargeBattery=False, stateNetMeter=False):
-	def solve(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, previousPeak=0.0, stateChargeBattery=False, stateNetMeter=False):
+	def solve(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
 		self.obj = None
 		self.sol = None
 			
@@ -306,7 +306,7 @@ class ParasolModel:
 				optFunction += -self.options.optCost * aux * BrownPrice[t]/1000.0
 			# Add peak power cost in a linear way
 			if self.options.peakCost != None:
-				optFunction += -self.options.optCost * (PeakBrown-previousPeak)/1000.0 * self.options.peakCost
+				optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
 		if self.options.optBat > 0 and self.options.batCap > 0:
 			for t in range(0, self.options.maxTime):
 				aux = 0
@@ -488,7 +488,7 @@ class ParasolModel:
 				if self.options.batCap > 0:
 					aux += BattBrown[t]
 				m.addConstr(aux <= PeakBrown, "Peak["+str(t)+"]")
-			m.addConstr(previousPeak <= PeakBrown)
+			m.addConstr(self.options.previousPeak <= PeakBrown)
 				
 		# Parasol constraints
 		# Constraints
@@ -1025,7 +1025,7 @@ if __name__=='__main__':
 	#solver.options.batDischargeMax = 1.0
 	tnow = datetime.now()
 	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload)
-	obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, previousPeak=solver.options.previousPeak, stateChargeBattery=False)
+	obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, stateChargeBattery=False)
 	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, stateChargeBattery=False)
 	print datetime.now()-tnow
 	
