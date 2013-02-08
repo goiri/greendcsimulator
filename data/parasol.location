@@ -10,8 +10,8 @@ longitude = -74.46073
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,NEWARK_INTERNATIONAL_ARPT
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,QUITO
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,ASWAN
-solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT,-5h
-solar.offset = -215d4h
+solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT,-4h
+#solar.offset = -215d4h
 solar.capacity = 1 # W
 solar.efficiency = 1.00 # 100%
 

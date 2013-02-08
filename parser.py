@@ -12,8 +12,70 @@ from commons import *
 from conf import *
 from plotter import *
 
-TOTAL_YEARS = 20
+"""
+Defines the scenario to evaluate the datacenter
+"""
+class Scenario:
+	def __init__(self, netmeter=0, period=None, workload=None):
+		self.netmeter = netmeter
+		self.period = period
+		self.workload = workload
+	
+	def __str__(self):
+		return str(self.netmeter) + '-' + str(self.period)  + '-' + str(self.workload)
+	
+	def __hash__(self):
+		return hash(str(self))
+	
+	def __eq__(self, other):
+		return (self.netmeter, self.period, self.workload) == (other.netmeter, other.period, other.workload)
 
+"""
+Defines the setup of the datacenter.
+"""
+class Setup:
+	def __init__(self, itsize=0.0, solar=0.0, battery=0.0, location=None, deferrable=False, turnoff=False, greenswitch=True, progress=100.0):
+		self.location = location
+		self.itsize = itsize
+		self.solar = solar
+		self.battery = battery
+		self.deferrable = deferrable
+		self.turnoff = turnoff
+		self.greenswitch = greenswitch
+		self.progress = progress
+
+"""
+Defines the costs related with operating a datacenter.
+"""
+class Cost:
+	def __init__(self, energy=0.0, peak=0.0, capex=0.0):
+		self.capex = capex
+		self.energy = energy
+		self.peak = peak
+	
+	def getTotal(self):
+		return self.capex + self.energy + self.peak
+	
+	def getOPEX(self):
+		return self.energy + self.peak
+	
+	def getCAPEX(self):
+		return self.capex
+
+"""
+Compare to setups
+"""
+def cmpsetup(x, y):
+	if x.turnoff == y.turnoff:
+		if x.deferrable == y.deferrable:
+			if x.battery == y.battery:
+				return x.solar - y.solar
+			else:
+				return x.battery - y.battery
+		else:
+			return x.deferrable - y.deferrable
+	else:
+		return x.turnoff - y.turnoff
 
 """
 Get the filename related to the current setup
@@ -41,6 +103,9 @@ def getFilename(scenario, setup):
 	# Always on
 	if setup.turnoff == False:
 		filename += '-on'
+	# GreenSwitch
+	if setup.greenswitch == False:
+		filename += '-nogreenswitch'
 	return filename
 
 """
@@ -109,6 +174,9 @@ def getDepthOfDischarge(logfile):
 	
 	return numdischarges, totaldischarge, maxdischarge
 
+"""
+Save the details of an experiment with a datacenter with a given setup.
+"""
 def saveDetails(scenario, setup, cost):
 	with open(LOG_PATH+getFilename(scenario, setup)+".html", 'w') as fout:
 		# Header
@@ -225,62 +293,6 @@ def generateFigures(scenario, setup):
 		if len(processes)>0:
 			time.sleep(0.5)
 
-def cmpsetup(x, y):
-	if x.turnoff == y.turnoff:
-		if x.deferrable == y.deferrable:
-			if x.battery == y.battery:
-				return x.solar - y.solar
-			else:
-				return x.battery - y.battery
-		else:
-			return x.deferrable - y.deferrable
-	else:
-		return x.turnoff - y.turnoff
-
-class Scenario:
-	def __init__(self, netmeter=0, period=None, workload=None):
-		self.netmeter = netmeter
-		self.period = period
-		self.workload = workload
-	
-	def __str__(self):
-		return str(self.netmeter) + '-' + str(self.period)  + '-' + str(self.workload)
-	
-	def __hash__(self):
-		return hash(str(self))
-	
-	def __eq__(self, other):
-		return (self.netmeter, self.period, self.workload) == (other.netmeter, other.period, other.workload)
-
-class Cost:
-	def __init__(self, energy=0.0, peak=0.0, capex=0.0):
-		self.capex = capex
-		self.energy = energy
-		self.peak = peak
-	
-	def getTotal(self):
-		return self.capex + self.energy + self.peak
-	
-	def getOPEX(self):
-		return self.energy + self.peak
-	
-	def getCAPEX(self):
-		return self.capex
-
-class Setup:
-	def __init__(self, itsize=0.0, solar=0.0, battery=0.0, location=None, deferrable=False, turnoff=False):
-		self.location = location
-		self.itsize = itsize
-		self.solar = solar
-		self.battery = battery
-		self.deferrable = deferrable
-		self.turnoff = turnoff
-
-class Result:
-	def __init__(self, cost, setup):
-		self.setup = setup
-		self.cost = cost
-
 def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 	out = ''
 	out += '<table border="0" cellspacing="0" cellpadding="0">'
@@ -338,18 +350,22 @@ if __name__ == "__main__":
 				# Read the rest of the values
 				delay = False
 				alwayson = False
+				greenswitch = True
 				while len(split) > 0:
 					value = split.pop(0)
 					if value == 'on':
 						alwayson = True
 					elif value == 'delay':
 						delay = True
+					elif value == 'nogreenswitch':
+						greenswitch = False
 					else:
 						print 'Unknown value:', value
 				# Open file and read results
 				costenergy = 0.0
 				costpeak = 0.0
 				costcapex = 0.0
+				lastTime = 0
 				with open(LOG_PATH+filename) as f:
 					for line in f.readlines():
 						if line.startswith('#'):
@@ -363,6 +379,14 @@ if __name__ == "__main__":
 							elif line.startswith('# Total:'):
 								#print 'Total:', line.split(' ')[2]
 								pass
+						else:
+							try:
+								expTime = int(line.split('\t')[0])
+								if expTime > lastTime:
+									lastTime = expTime
+							except Exception, e:
+								print 'Error reading log file', line, e
+				progress = 100.0*lastTime/period
 				# Calculate capex
 				"""
 				costcapex = 0.0
@@ -372,8 +396,7 @@ if __name__ == "__main__":
 				# Store results
 				scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
 				cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex)
-				setup = Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson)
-				#results[scenario] = Result(setup, cost)
+				setup = Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch, progress=progress)
 				if scenario not in results:
 					results[scenario] = []
 				results[scenario].append((setup, cost))
@@ -393,8 +416,8 @@ if __name__ == "__main__":
 		fout.write('<tr>\n')
 		# Setup
 		fout.write('<th></th>\n')
-		fout.write('<th width="80px">DC Size</th>\n')
-		fout.write('<th width="80px">Period</th>\n')
+		fout.write('<th width="70px">DC Size</th>\n')
+		fout.write('<th width="70px">Period</th>\n')
 		fout.write('<th width="80px">Location</th>\n')
 		fout.write('<th width="80px">Net meter</th>\n')
 		fout.write('<th width="80px">Workload</th>\n')
@@ -415,16 +438,19 @@ if __name__ == "__main__":
 		for scenario in results:
 			try:
 				# Get baseline
-				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[50]
+				#basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[50]
 				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
-						
 					fout.write('<tr>\n')
-					if setup != basesetup:
-						fout.write('<td align="center"><a href="%s">?</a></td>\n' % (getFilename(scenario, setup)+'.html')) # Datacenter size TODO
-					else:
-						fout.write('<td align="center"><b><a href="%s">?</a></b></td>\n' % (getFilename(scenario, setup)+'.html')) # Datacenter size TODO
+					# Experiment progress
+					#experimentDescription = '%.1f%%' % setup.progress
+					experimentDescription = getBarChart([setup.progress, 100-setup.progress], 100, width=75, color='green')
+					if cost.energy > 0.0 or cost.peak > 0.0 or cost.capex > 0.0:
+						experimentDescription = 'R'
+					if setup == basesetup:
+						experimentDescription = '<b>'+experimentDescription+'</b>'
+					fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (getFilename(scenario, setup)+'.html', experimentDescription))
 					# Setup
 					if setup != basesetup:
 						fout.write('<td align="center"><font color="#999999">%s</font></td>\n' % powerStr(setup.itsize)) # Datacenter size TODO
@@ -454,7 +480,6 @@ if __name__ == "__main__":
 						fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
 					else:
 						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-						
 					# Costs
 					fout.write('<td align="right">%s</td>\n' % costStr(cost.energy))
 					fout.write('<td align="right">%s</td>\n' % costStr(cost.peak))

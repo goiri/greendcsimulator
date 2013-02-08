@@ -11,12 +11,20 @@ NETMETER_RR=1.0
 
 # Threading
 MAXTHREADS=`cat /proc/cpuinfo  | grep processor | wc -l`
+# MAXTHREADS=4
 NUMTHREADS=0
+
+# Parse solar modes
+SOLARMODES="3200 0 800 1600 2400"
+if [ $# -ge 1 ]; then
+	SOLARMODES=$*
+fi
 
 if true; then
 	for ALWAYSON in "" "--alwayson"; do
 		for DELAY in "--delay" ""; do
-			for SOLAR in 3200 0 800 1600 2400; do
+# 			for SOLAR in 3200 0 800 1600 2400; do
+			for SOLAR in $SOLARMODES; do
 				for BATTERY in 0 32000 8000 16000 24000; do
 					# Wait for empty slots
 					if [ $NUMTHREADS -ge $MAXTHREADS ]; then
