@@ -1,0 +1,14 @@
+Simulation:
+	bash simulator.sh --solar 3200 --battery 32000 --period 23h30m --workload $WORKLOAD --net $NETMETER_WR --solardata data/validation.solar
+Real:
+	log-222-swim-source-onoff-netwr-peak-power.log (+log-133-swim-nobattery-onoff-delay-netwr-peak-source.log)
+
+Results: Simulation vs Real
+	Solar available: 21023Wh vs 21261.4Wh => -0.7%
+	Brown used: 3846Wh vs 1965.2Wh => +5.4%
+	Net metering: 2052.4Wh vs 113.3Wh => +5.5%
+	Battery charge: 8071Wh vs 10824.8Wh => -7.9%
+	Battery discharged: 9378Wh vs 11652.2Wh => -6.5%
+	Total energy: 34274Wh vs 34878.8Wh => -1.8%
+	Brown energy cost: $0.34 vs $0.235 (over ~$3.85) => +2.7%
+	Peak power: 614.4W vs 408.4W (over 1853.9W) => +11.2%

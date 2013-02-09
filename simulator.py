@@ -145,6 +145,7 @@ class Simulator:
 				solver.options.peakCost = self.location.brownpowerprice
 				#solver.options.previousPeak = peakbrown
 				solver.options.previousPeak = 0.95*peakbrown
+				#solver.options.previousPeak = 0.85*peakbrown
 				#solver.options.previousPeak = 0.0
 				# Battery
 				solver.options.batCap = self.infra.battery.capacity
@@ -200,6 +201,7 @@ class Simulator:
 						temperature = self.location.getTemperature(time + predseconds)
 						coolingPower = self.infra.cooling.getPower(temperature)
 						w = loadPower + coolingPower
+						#w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 						# Green availability prediction: right now is perfect knowledge
 						g = self.location.getSolar(time + predseconds) * self.infra.solar.capacity * self.infra.solar.efficiency
@@ -254,6 +256,8 @@ class Simulator:
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
 					prevload += (workload - execload)*(TIMESTEP/3600.0)
+					if prevload < 0:
+						prevload = 0.0
 					
 				# Fix solution to match actual system
 				# Sometimes the solver says to run more than is there
@@ -361,6 +365,8 @@ if __name__ == "__main__":
 	parser.add_option('-b', '--battery',  dest='battery',   type="float", help='specify the infrastructure has batteries', default=None)
 	parser.add_option('--nosolar',        dest='nosolar',   action="store_true",  help='specify the infrastructure has no solar')
 	parser.add_option('--nobattery',      dest='nobattery', action="store_true",   help='specify the infrastructure has no batteries')
+	parser.add_option('--offset',         dest='offset',    type="string", help='specify offset', default=None)
+	parser.add_option('--solardata',      dest='solardata',    type="string", help='specify offset', default=None)
 	# GreenSwitch
 	parser.add_option('-g', '--nogswitch',dest='greenswitch',action="store_false", help='specify if we use greenswitch')
 	# Load
@@ -387,6 +393,13 @@ if __name__ == "__main__":
 		simulator.location.netmetering = options.netmeter
 	if options.greenswitch == False:
 		simulator.greenswitch = False
+	if options.solardata != None:
+		print 'Data'
+		print options.solardata
+		simulator.location.solar = simulator.location.readValues(options.solardata)
+		simulator.location.solarcapacity = 3200.0
+		simulator.location.solarefficiency = 0.97
+		simulator.location.solaroffset = 0.0
 	simulator.infra.printSummary()
 	
 	# Run simulation

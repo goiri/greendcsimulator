@@ -174,6 +174,68 @@ def getDepthOfDischarge(logfile):
 	
 	return numdischarges, totaldischarge, maxdischarge
 
+def getEnergyStats(logfile):
+	try:
+		brownenergy = 0.0
+		greenenergy = 0.0
+		netmeenergy = 0.0
+		peakpower = 0.0
+		batchgenergy = 0.0
+		batdisenergy = 0.0
+		costenergy = 0.0
+		costnetmeter = 0.0
+		loadenergy = 0.0
+		costpeak = 0.0
+		with open(logfile, 'r') as fin:
+			for line in fin.readlines():
+				if not line.startswith('#'):
+					line = line.replace('\n', '')
+					lineSplit = line.split('\t')
+					# Get battery power
+					t =             int(lineSplit[0])
+					brownprice =    float(lineSplit[1])
+					greenpower =    float(lineSplit[2])
+					netmeter =      float(lineSplit[3])
+					brownpower =    float(lineSplit[4])
+					batcharge =     float(lineSplit[5])
+					batdischarge =  float(lineSplit[6])
+					batlevel =      float(lineSplit[7])
+					workload =      float(lineSplit[8])
+					coolingpower =  float(lineSplit[9])
+					execload =      float(lineSplit[10])
+					prevload =      float(lineSplit[11])
+					
+					# Account
+					if brownpower > peakpower:
+						peakpower = brownpower
+					
+					brownenergy += brownpower * (TIMESTEP/3600.0)
+					greenenergy += greenpower * (TIMESTEP/3600.0)
+					netmeenergy += netmeter * (TIMESTEP/3600.0)
+					batchgenergy += batcharge * (TIMESTEP/3600.0)
+					batdisenergy += batdischarge * (TIMESTEP/3600.0)
+					costenergy += (brownpower * (TIMESTEP/3600.0))/1000.0 * brownprice
+					costnetmeter += 0.4*(netmeter * (TIMESTEP/3600.0))/1000.0 * brownprice
+					loadenergy += execload * (TIMESTEP/3600.0)
+		costpeak = peakpower/1000.0 * 13.61
+		
+		print logfile
+		print 'Energy and power:'
+		print '\tBrown energy: %.1fWh' % brownenergy
+		print '\tGreen energy: %.1fWh' % greenenergy
+		print '\tNet metering energy: %.1fWh' % netmeenergy
+		print '\tBattery charge energy: %.1fWh' % batchgenergy
+		print '\tBattery discharge energy: %.1fWh' % batdisenergy
+		print '\tLoad energy: %.1fWh' % (loadenergy)
+		print '\tTotal used: %.1fWh' % (batdisenergy+greenenergy+brownenergy)
+		print '\tPeak power: %.1fW' % peakpower
+		print 'Cost:'
+		print '\tEnergy cost: $%.2f - $%.2f = $%.2f' % (costenergy, costnetmeter, costenergy-costnetmeter)
+		print '\tPower cost: $%.2f' % costpeak
+	except Exception, e:
+		print e
+	
+
 """
 Save the details of an experiment with a datacenter with a given setup.
 """
@@ -297,7 +359,10 @@ def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 	out = ''
 	out += '<table border="0" cellspacing="0" cellpadding="0">'
 	out += '<tr height="%d">' % height
-	colors = [color, 'yellow', 'red', 'green', 'orange', 'black', 'blue']
+	if isinstance(color, str):
+		colors = [color, 'yellow', 'red', 'green', 'orange', 'black', 'blue']
+	else:
+		colors = color + ['yellow', 'red', 'green', 'orange', 'black', 'blue']
 	i=0
 	total = 0
 	for val in vals:
@@ -318,6 +383,8 @@ def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 
 # Parsing
 if __name__ == "__main__":
+	getEnergyStats('results/result-1830.0-32000-3200-23h30m-net0.40-asplos-NEWARK_INTERNATIONAL_ARPT.log')
+	
 	results = {}
 	# Generate summary
 	print 'Generating summary...'
@@ -438,14 +505,15 @@ if __name__ == "__main__":
 		for scenario in results:
 			try:
 				# Get baseline
-				#basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[50]
-				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
+				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[50]
+				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[46]
+				#basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
 					fout.write('<tr>\n')
 					# Experiment progress
 					#experimentDescription = '%.1f%%' % setup.progress
-					experimentDescription = getBarChart([setup.progress, 100-setup.progress], 100, width=75, color='green')
+					experimentDescription = getBarChart([setup.progress, 100-setup.progress], 100, width=75, color=['green', '#C0C0C0'])
 					if cost.energy > 0.0 or cost.peak > 0.0 or cost.capex > 0.0:
 						experimentDescription = 'R'
 					if setup == basesetup:

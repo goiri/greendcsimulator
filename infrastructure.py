@@ -11,7 +11,7 @@ class SolarPanels:
 		self.price = price # %
 
 class WindTurbines:
-	def __init__(self, capacity=0, efficiency=0.977, price=0.0):
+	def __init__(self, capacity=0, efficiency=0.97, price=0.0):
 		self.capacity = capacity # W
 		self.efficiency = efficiency # %
 		self.price = price # %
