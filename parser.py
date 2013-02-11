@@ -66,16 +66,19 @@ class Cost:
 Compare to setups
 """
 def cmpsetup(x, y):
-	if x.turnoff == y.turnoff:
-		if x.deferrable == y.deferrable:
-			if x.battery == y.battery:
-				return x.solar - y.solar
+	if x.location == y.location:
+		if x.turnoff == y.turnoff:
+			if x.deferrable == y.deferrable:
+				if x.battery == y.battery:
+					return x.solar - y.solar
+				else:
+					return x.battery - y.battery
 			else:
-				return x.battery - y.battery
+				return x.deferrable - y.deferrable
 		else:
-			return x.deferrable - y.deferrable
+			return x.turnoff - y.turnoff
 	else:
-		return x.turnoff - y.turnoff
+		return cmp(x.location, location)
 
 """
 Get the filename related to the current setup
@@ -109,12 +112,55 @@ def getFilename(scenario, setup):
 	return filename
 
 """
+Get the file with the battery lifetime
+"""
+def readBatteryLifetimeProfile():
+	batterylifetime = []
+	with open('data/leadacid.battery', 'r') as fin:
+		for line in fin.readlines():
+			# Clean line
+			line = cleanLine(line)
+			if line != '':
+				dod, cycles = line.split(' ')
+				dod = float(dod)
+				cycles = float(cycles)
+				batterylifetime.append((dod, cycles))
+	return batterylifetime
+
+# Get the cycles that cna be made with a given Depth of Discharge
+def getBatteryCycles(batterylifetime, dod):
+	prevauxdod = None
+	prevcycles = None
+	for auxdod, auxcycles in batterylifetime:
+		if dod == auxdod:
+			return auxcycles
+		elif dod < auxdod:
+			# First value
+			if dod < 0.1:
+				return 0.0
+			elif prevauxdod == None:
+				# If it is the first value, we asume it's linear from 0
+				return auxcycles * float(auxdod)/float(dod)
+			else:
+				p1 = (prevauxdod, prevcycles)
+				p2 = (auxdod, auxcycles)
+				return interpolate(p1, p2, dod)
+		prevauxdod = auxdod
+		prevcycles = auxcycles
+	return 0.0
+
+"""
 Get the depth of discharge information from the logfile
 """
 def getDepthOfDischarge(logfile):
 	numdischarges = 0
 	totaldischarge = 0.0
 	maxdischarge = 0.0
+	lifetime = 0.0 # Lifetime %
+	# Read lead acid DoD
+	batterylifetime = readBatteryLifetimeProfile()
+	
+	# Read log file
 	try:
 		with open(logfile, 'r') as fin:
 			# Get battery size from file name
@@ -148,7 +194,14 @@ def getDepthOfDischarge(logfile):
 								totaldischarge += batlevel0 - batlevel1
 								if batlevel0 - batlevel1 > maxdischarge:
 									maxdischarge = batlevel0 - batlevel1
+								# Account lifetime
+								dod = batlevel0 - batlevel1
+								cycles = getBatteryCycles(batterylifetime, dod)
+								#print dod, '% -------->', cycles, 'cycles'
+								if cycles > 0.0:
+									lifetime += 100.0/cycles
 						startbatlevel = batlevel
+						
 					elif batdischarge > 0 and not discharging:
 						charging = False
 						discharging = True
@@ -160,8 +213,9 @@ def getDepthOfDischarge(logfile):
 					prevbatpower = batpower
 					prevbatlevel = batlevel
 	except Exception, e:
-		#print 'Error reading', logfile, e
-		pass
+		print 'Error getting depth of discharge for', logfile
+		print 'Cause:', e
+		#pass
 	
 	"""
 	print logfile
@@ -172,7 +226,7 @@ def getDepthOfDischarge(logfile):
 	print 'Maximum discharge: %.1f%%' % (maxdischarge)
 	"""
 	
-	return numdischarges, totaldischarge, maxdischarge
+	return numdischarges, totaldischarge, maxdischarge, lifetime
 
 def getEnergyStats(logfile):
 	try:
@@ -282,15 +336,15 @@ def saveDetails(scenario, setup, cost):
 		
 		fout.write('<h1>Battery</h1>\n')
 		#fout.write('<h1>Battery</h1>\n')
-		numdischarges, totaldischarge, maxdischarge = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
+		numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
 		fout.write('<ul>\n')
 		fout.write('<li>Number of discharges: %d</li>\n' % numdischarges)
 		if numdischarges>0:
 			fout.write('<li>Average discharge: %.1f%%</li>\n' % (totaldischarge/numdischarges))
 			fout.write('<li>Maximum discharge: %.1f%%</li>\n' % (maxdischarge))
 			fout.write('<li>Total discharge: %.1f%%</li>\n' % totaldischarge)
+			fout.write('<li>Lifetime: %.1f%% (%.1f years)</li>\n' % (lifetime, 100.0/lifetime))
 		fout.write('</ul>\n')
-		
 		
 		fout.write('<h1>Log</h1>\n')
 		fout.write('<ul>\n')
@@ -383,7 +437,7 @@ def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 
 # Parsing
 if __name__ == "__main__":
-	getEnergyStats('results/result-1830.0-32000-3200-23h30m-net0.40-asplos-NEWARK_INTERNATIONAL_ARPT.log')
+	#getEnergyStats('results/result-1830.0-32000-3200-23h30m-net0.40-asplos-NEWARK_INTERNATIONAL_ARPT.log')
 	
 	results = {}
 	# Generate summary
@@ -502,11 +556,11 @@ if __name__ == "__main__":
 		fout.write('<th width="80px">Yearly</th>\n')
 		fout.write('<th width="80px">Ammort</th>\n')
 		fout.write('</tr>\n')
+		figure3d = {}
 		for scenario in results:
 			try:
 				# Get baseline
-				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[50]
-				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[46]
+				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[70]
 				#basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
@@ -582,12 +636,29 @@ if __name__ == "__main__":
 						fout.write('<td align="center"></td>\n')
 					else:
 						fout.write('<td align="right">%.1f years</td>\n' % ammortization)
+					# 3D Figure
+					if setup.turnoff and setup.location == 'NEWARK_INTERNATIONAL_ARPT':
+						if (setup.solar, setup.battery) not in figure3d:
+							figure3d[(setup.solar, setup.battery)] = []
+						figure3d[(setup.solar, setup.battery)].append((setup.deferrable, ammortization))
 					fout.write('<tr/>\n')
 			except Exception, e:
 				print 'Error:', e
 		fout.write('</table>\n')
 		fout.write('</body>\n')
 		fout.write('</html>\n')
+	
+	# 3D Figure
+	print 'Generating 3d data...'
+	with open('3d.data', 'w') as f3ddata:
+		for solar, battery in sorted(figure3d):
+			aux = [99999999, 99999999]
+			for deferrable, ammortization in figure3d[(solar, battery)]:
+				if not deferrable:
+					aux[0] = ammortization
+				else:
+					aux[1] = ammortization
+			f3ddata.write('%.1f %.1f %.2f %.2f\n' % (solar, battery, aux[0], aux[1]))
 	
 	# Generate detailed page for experiment
 	print 'Generating details...'
