@@ -7,12 +7,10 @@ Class to implement a series of values in time
 """
 class TimeList:
 	def __init__(self, continous=True):
-		self.list = [] # [(time, value)
+		self.list = [] # [(time, value),...]
 		self.continous = continous
 
 	def __str__(self):
-		#for t, v in 
-		#return ','.join(self.list)
 		return str(self.list)
 	
 	def __len__(self):

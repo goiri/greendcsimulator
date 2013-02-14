@@ -45,6 +45,21 @@ class Setup:
 		self.turnoff = turnoff
 		self.greenswitch = greenswitch
 		self.progress = progress
+		
+	def __cmp__(self, other):
+		if self.location == other.location:
+			if self.turnoff == other.turnoff:
+				if self.deferrable == other.deferrable:
+					if self.battery == other.battery:
+						return self.solar - other.solar
+					else:
+						return self.battery - other.battery
+				else:
+					return self.deferrable - other.deferrable
+			else:
+				return self.turnoff - other.turnoff
+		else:
+			return cmp(self.location, other.location)
 
 """
 Defines the costs related with operating a datacenter.
@@ -63,24 +78,6 @@ class Cost:
 	
 	def getCAPEX(self):
 		return self.capex
-
-"""
-Compare to setups
-"""
-def cmpsetup(x, y):
-	if x.location == y.location:
-		if x.turnoff == y.turnoff:
-			if x.deferrable == y.deferrable:
-				if x.battery == y.battery:
-					return x.solar - y.solar
-				else:
-					return x.battery - y.battery
-			else:
-				return x.deferrable - y.deferrable
-		else:
-			return x.turnoff - y.turnoff
-	else:
-		return cmp(x.location, location)
 
 """
 Get the filename related to the current setup
@@ -374,6 +371,9 @@ def generateFigures(scenario, setup):
 		if len(processes)>0:
 			time.sleep(0.5)
 
+"""
+Draws an HTML bar chart
+"""
 def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 	out = ''
 	out += '<table border="0" cellspacing="0" cellpadding="0">'
@@ -531,13 +531,20 @@ if __name__ == "__main__":
 		for scenario in results:
 			try:
 				# Get baseline
+				basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[0]
+				for setup, cost in results[scenario]:
+					if setup.location=='NEWARK_INTERNATIONAL_ARPT' and setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
+						basesetup = setup
+						basecost = cost
+				"""
 				TOP_POSITION = 70
 				if len(results[scenario]) >= TOP_POSITION:
-					basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[TOP_POSITION]
+					basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[TOP_POSITION] # , cmp=cmpsetup
 				else:
-					basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
+					basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[0] #, cmp=cmpsetup
+				"""
 				# Show result
-				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
+				for setup, cost in sorted(results[scenario], key=itemgetter(0)): #, cmp=cmpsetup
 					fout.write('<tr>\n')
 					# Experiment progress
 					#experimentDescription = '%.1f%%' % setup.progress
@@ -661,7 +668,7 @@ if __name__ == "__main__":
 	print 'Generating details...'
 	total = 0
 	for scenario in results:
-		for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
+		for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
 			saveDetails(scenario, setup, cost)
 			total += 1
 	
@@ -670,7 +677,7 @@ if __name__ == "__main__":
 	current = 0
 	last = datetime.datetime.now()
 	for scenario in results:
-		for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
+		for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
 			generateFigures(scenario, setup)
 			current+=1
 			if datetime.datetime.now()-last > datetime.timedelta(seconds=10):
