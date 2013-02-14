@@ -60,9 +60,10 @@ echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$3>\$11?\$11:\$3) w filledcurve y1=0
 echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$3)               w lines lw 1             lc rgb \"#00FF00\" title \"Green power available\", \\" >> /tmp/$OUTPUTFILE.plot
 echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$8/10)            w lines lw 1             lc rgb \"#FF0000\" title \"Battery level\", \\" >> /tmp/$OUTPUTFILE.plot
 echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$9)               w lines lw 1             lc rgb \"#800000\" title \"Workload\", \\" >> /tmp/$OUTPUTFILE.plot
-echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$11)              w lines lw 1             lc rgb \"#000000\" title \"Executed load\", \\" >> /tmp/$OUTPUTFILE.plot
+echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$11)              w lines lw 2             lc rgb \"#000000\" title \"Executed load\", \\" >> /tmp/$OUTPUTFILE.plot
+echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$11+\$10)         w lines lw 1             lc rgb \"#555555\" title \"Executed load + Cooling\", \\" >> /tmp/$OUTPUTFILE.plot
 # echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$4)              w lines lw 1             lc rgb \"#000000\" title \"Axu net neter\", \\" >> /tmp/$OUTPUTFILE.plot
-# echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$12)              w lines lw 1             lc rgb \"#0000FF\" title \"Previous load\"" >> /tmp/$OUTPUTFILE.plot
+# echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$12)             w lines lw 1             lc rgb \"#0000FF\" title \"Previous load\"" >> /tmp/$OUTPUTFILE.plot
 echo "\"$INPUTFILEDATA\" using (\$1/3600):(\$2)               w histeps axes x1y2 lw 3 lc rgb \"#0000FF\" title \"Brown energy price\"" >> /tmp/$OUTPUTFILE.plot
 echo "" >> /tmp/$OUTPUTFILE.plot
 

@@ -4,6 +4,9 @@ from conf import *
 from commons import *
 
 from operator import itemgetter
+from datetime import datetime
+
+from timelist import TimeList
 
 """
 Defines a location.
@@ -23,7 +26,9 @@ class Location:
 		self.windefficiency = 1.0
 		self.windcapacity = 1.0
 		self.windoffset = 0.0
+		# Temperature
 		self.temperature = None
+		self.temperatureoffset = 0.0
 		# Brown
 		self.brownenergyprice = None
 		self.brownpowerprice = None
@@ -85,11 +90,24 @@ class Location:
 								self.windoffset = parseTime(value)
 						elif key.startswith('temperature'):
 							# Read file with the temperature
-							self.temperature = self.readValues(value)
+							#self.temperature = self.readValues(value)
+							split = value.split(',')
+							filename = split[0]
+							location = None
+							if len(split) >= 2:
+								location = split[1]
+							if len(split) >= 3:
+								self.temperatureoffset = parseTime(split[2])
+							# Read data
+							if location == None:
+								self.temperature = self.readValues(filename)
+							else:
+								self.temperature = self.readLocationData(filename, location)
 						elif key.startswith('brown.'):
 							if key.startswith('brown.energy'):
-								# Read file with the temperature
+								# Read file with the brown energy price
 								self.brownenergyprice = self.readValues(value)
+								self.brownenergyprice.continous = False
 							elif key.startswith('brown.power'):
 								# Read file with the temperature
 								self.brownpowerprice = float(value)
@@ -98,7 +116,8 @@ class Location:
 								self.netmetering = float(value)
 	
 	def readPlacementData(self, filename, locationname):
-		ret = []
+		#ret = []
+		ret = TimeList()
 		with open(filename, 'r') as f:
 			self.name = locationname
 			token  = "NONE"
@@ -132,30 +151,48 @@ class Location:
 							d = i
 							seconds = (m-1)*31*24*60*60 + (d-1)*24*60*60 + (h-1)*60*60
 							value = float(aux[i1])
-							ret.append((seconds, value))
+							#ret.append((seconds, value))
+							ret[seconds] = value
 							i1 += 1
+		
 		# Sort it and return
-		return sorted(ret, key=itemgetter(0))
+		#return sorted(ret, key=itemgetter(0))
+		return ret
+
+	def readLocationData(self, filename, location, col=5):
+		#ret = []
+		ret = TimeList()
+		with open(filename, 'r') as f:
+			for line in f.readlines():
+				# Clean line
+				line = cleanLine(line)
+				lineSplit = line.split(' ')
+				auxlocation = lineSplit[0]
+				if location == auxlocation:
+					month = int(lineSplit[1])
+					day = int(lineSplit[2])
+					hour = int(lineSplit[3])
+					if hour == 24:
+						day += 1
+						hour = 0
+					#td = datetime(2013, month, day, hour) - datetime(2013, 1, 1, 0)
+					#seconds = td.days*24*60*60 + td.seconds
+					seconds = (month-1)*31*24*60*60 + (day-1)*24*60*60 + hour*60*60
+					value = float(lineSplit[col])
+					#ret.append((seconds, v))
+					ret[seconds] = value
+		return ret
 
 	def readValues(self, filename=None, location=None):
-		"""
-		if filename.find(",")>=0:
-			split = filename.split(",")
-			offset = 0
-			if len(split) > 2:
-				auxfilename, auxlocation, offset = split
-				offset = parseTime(offset)
-			else:
-				auxfilename, auxlocation = split
-			return self.readPlacementData(auxfilename, auxlocation, offset=offset)
-		"""
 		if location != None:
 			return self.readPlacementData(filename, location)
 		else:
-			ret = []
+			#ret = []
+			ret = TimeList()
 			if filename == '':
 				# Default value
-				ret = [(0, 0.0)]
+				#ret = TimeValue[(0, 0.0)]
+				ret[0] = 0.0
 			elif filename != None:
 				with open(filename, 'r') as f:
 					for line in f.readlines():
@@ -165,26 +202,33 @@ class Location:
 							t, v = line.split(' ')
 							t = parseTime(t)
 							v = float(v)
-							ret.append((t, v))
+							#ret.append((t, v))
+							ret[t] = v
 			return ret
 
 	def getTemperature(self, time):
-		if time <= self.temperature[0][0]:
+		offsettime = time - self.temperatureoffset
+		'''
+		ret = 0.0
+		if offsettime <= self.temperature[0][0]:
 			t, temperature = self.temperature[0]
-			return temperature
-		elif time >= self.temperature[-1][0]:
+			ret = temperature
+		elif offsettime >= self.temperature[-1][0]:
 			t, temperature = self.temperature[-1]
-			return temperature
+			ret = temperature
 		else:
 			for i in range(0, len(self.temperature)):
-				if time >= self.temperature[i][0] and time < self.temperature[i+1][0]:
-					return interpolate(self.temperature[i], self.temperature[i+1], time)
-		return None
+				if offsettime >= self.temperature[i][0] and offsettime < self.temperature[i+1][0]:
+					ret = interpolate(self.temperature[i], self.temperature[i+1], offsettime)
+					break
+		return ret
+		'''
+		return self.temperature[offsettime]
 		
 	def getSolar(self, time):
-		ret = 0.0
 		offsettime = time - self.solaroffset
-		#offsettime = time + self.solaroffset
+		"""
+		ret = 0.0
 		if len(self.solar) > 0:
 			if offsettime <= self.solar[0][0]:
 				t, solar = self.solar[0]
@@ -198,10 +242,13 @@ class Location:
 						ret = interpolate(self.solar[i], self.solar[i+1], offsettime)
 						break
 		return (ret/self.solarefficiency)/self.solarcapacity
+		"""
+		return (self.solar[offsettime]/self.solarefficiency)/self.solarcapacity
 		
 	def getWind(self, time):
-		ret = 0.0
 		offsettime = time - self.windoffset
+		"""
+		ret = 0.0
 		if len(self.wind) > 0:
 			if offsettime <= self.wind[0][0]:
 				t, wind = self.wind[0]
@@ -215,13 +262,19 @@ class Location:
 						ret = interpolate(self.wind[i], self.wind[i+1], offsettime)
 						break
 		return (ret/self.windefficiency)/self.windcapacity
+		"""
+		return (self.wind[offsettime]/self.solarefficiency)/self.solarcapacity
 	
 	def getBrownPrice(self, time):
+		"""
 		for i in range(0, len(self.brownenergyprice)):
 			t, v = self.brownenergyprice[i]
 			if time >= self.brownenergyprice[i][0] and time < self.brownenergyprice[i+1][0]:
 				return self.brownenergyprice[i][1]
 		return None
+		"""
+		offsettime = time
+		return self.brownenergyprice[offsettime]
 		
 
 if __name__ == "__main__":

@@ -21,8 +21,7 @@ if [ $# -ge 1 ]; then
 fi
 
 if true; then
-# 	for ALWAYSON in "" "--alwayson"; do
-	for ALWAYSON in " "; do
+	for ALWAYSON in "" "--alwayson"; do
 		for DELAY in "--delay" ""; do
 			for SOLAR in $SOLARMODES; do
 				for BATTERY in 0 32000 8000 16000 24000; do

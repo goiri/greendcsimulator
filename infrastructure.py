@@ -18,9 +18,50 @@ class WindTurbines:
 
 # Energy storage
 class Batteries:
-	def __init__(self, capacity=0, efficiency=0.85):
+	def __init__(self, capacity=0, efficiency=0.85, batterylifetimedata='data/leadacid.battery'):
 		self.capacity = capacity # Wh
 		self.efficiency = efficiency # %
+		self.batterylifetime = None
+		if batterylifetimedata != None:
+			self.batterylifetime = self.readBatteryLifetimeProfile(batterylifetimedata)
+	
+	"""
+	Get the file with the battery lifetime
+	"""
+	def readBatteryLifetimeProfile(self, batterylifetimedata):
+		ret = []
+		with open(batterylifetimedata, 'r') as fin:
+			for line in fin.readlines():
+				# Clean line
+				line = cleanLine(line)
+				if line != '':
+					dod, cycles = line.split(' ')
+					ret.append((float(dod), float(cycles)))
+		return ret
+
+	"""
+	Get the cycles that can be made with a given Depth of Discharge
+	"""
+	def getBatteryCycles(self, dod):
+		prevauxdod = None
+		prevcycles = None
+		for auxdod, auxcycles in self.batterylifetime:
+			if dod == auxdod:
+				return auxcycles
+			elif dod < auxdod:
+				# First value
+				if dod < 0.1:
+					return 0.0
+				elif prevauxdod == None:
+					# If it is the first value, we asume it's linear from 0
+					return auxcycles * float(auxdod)/float(dod)
+				else:
+					p1 = (prevauxdod, prevcycles)
+					p2 = (auxdod, auxcycles)
+					return interpolate(p1, p2, dod)
+			prevauxdod = auxdod
+			prevcycles = auxcycles
+		return 0.0
 
 # IT equipment
 class Server:
@@ -146,14 +187,15 @@ class IT:
 				else:
 					power += self.racks[rackId].servers[serverId].powers3
 		return power
-	
-	
 
+"""
+Model for datacenter cooling system.
+"""
 class Cooling:
 	def __init__(self):
 		# Temperature -> Power
-		#self.power = {20:0.0, 21:8.0, 27.0:400.0, 35.0:2400.0}
 		self.power = {}
+		self.pue = {}
 	
 	# Get a server configuration from its type
 	def read(self, coolingtype):
@@ -170,7 +212,11 @@ class Cooling:
 						if key.startswith('power.'):
 							temperature = float(key[len('power.'):])
 							self.power[temperature] = float(value)
+						elif key.startswith('pue.'):
+							temperature = float(key[len('pue.'):])
+							self.pue[temperature] = float(value)
 	
+	# Get the cooling power for a given temperature
 	def getPower(self, temperature):
 		temperatures = list(sorted(self.power.keys()))
 		
@@ -185,6 +231,23 @@ class Cooling:
 				if temperature < temperatures[i]:
 					p1 = (temperatures[i-1],self.power[temperatures[i-1]])
 					p2 = (temperatures[i],  self.power[temperatures[i]])
+					return interpolate(p1, p2, temperature)
+		return None
+	
+	# Get the datacenter PUE for a given temperature
+	def getPUE(self, temperature):
+		temperatures = list(sorted(self.pue.keys()))
+		if temperature < temperatures[0]:
+			return self.pue[temperatures[0]]
+		elif temperature > temperatures[-1]:
+			return self.pue[temperatures[-1]]
+		elif temperature in temperatures:
+			return self.pue[temperature]
+		else:
+			for i in range(0, len(temperatures)):
+				if temperature < temperatures[i]:
+					p1 = (temperatures[i-1],self.pue[temperatures[i-1]])
+					p2 = (temperatures[i],  self.pue[temperatures[i]])
 					return interpolate(p1, p2, temperature)
 		return None
 

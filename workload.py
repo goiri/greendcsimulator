@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 
 from commons import *
+from timelist import TimeList
 
 class Workload:
 	def __init__(self, filename=None):
@@ -12,10 +13,12 @@ class Workload:
 		self.load = self.readValues(filename)
 	
 	def readValues(self, filename=None):
-		ret = []
+		#ret = []
+		ret = TimeList()
 		if filename == '':
 			# Default value
-			ret = (0, 0.0)
+			#ret = (0, 0.0)
+			ret[0] = 0.0
 		elif filename != None:
 			with open(filename, 'r') as f:
 				for line in f.readlines():
@@ -43,18 +46,21 @@ class Workload:
 						t, v = line.split(' ')
 						t = parseTime(t)
 						v = float(v)
-						ret.append((t, v))
+						#ret.append((t, v))
+						ret[t] = v
 			if self.repeat:
 				# Repeat five years
-				torepeat = list(ret)
-				last = ret[-1][0]
+				torepeat = list(ret.list)
+				last = ret.list[-1][0]
 				for i in range(0, 5*365):
 					for t, load in torepeat:
-						ret.append((last+t, load))
-					last = ret[-1][0]
+						#ret.append((last+t, load))
+						ret[last+t] = load
+					last = ret.list[-1][0]
 		return ret
 	
 	def getLoad(self, time):
+		"""
 		if time <= self.load[0][0]:
 			t, load = self.load[0]
 			return load*self.scale
@@ -66,6 +72,8 @@ class Workload:
 				if time >= self.load[i][0] and time < self.load[i+1][0]:
 					return interpolate(self.load[i], self.load[i+1], time)*self.scale
 		return None
+		"""
+		return self.load[time]*self.scale
 
 if __name__ == "__main__":
 	load = Workload('fixed.workload')

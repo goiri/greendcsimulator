@@ -147,13 +147,11 @@ class ParasolModel:
 		return energyCost + peakCost - netMeterMoney
 	"""
 	
-	
-	def solvePeak(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
-		return self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, steps=steps, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
+	def solvePeak(self, jobs=None, load=None, initial=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
+		return self.solve(jobs=jobs, initial=initial, load=load, greenAvail=greenAvail, brownPrice=brownPrice, pue=pue, steps=steps, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
 	
 	# Gurobi solver
-	#def solve(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, peak=None, stateChargeBattery=False, stateNetMeter=False):
-	def solve(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
+	def solve(self, jobs=None, initial=None, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
 		self.obj = None
 		self.sol = None
 			
@@ -163,6 +161,7 @@ class ParasolModel:
 		
 		self.greenAvail = greenAvail
 		self.brownPrice = brownPrice
+		self.pue = pue
 		
 		# Model
 		m = Model("parasol")
@@ -280,7 +279,19 @@ class ParasolModel:
 				ts = t*self.options.slotLength
 				while len(self.brownPrice)>jB+1 and self.brownPrice[jB+1].t <= ts: jB += 1
 				BrownPrice[t] = self.brownPrice[jB].v
-			
+		# PUE
+		PUE = {}
+		if self.pue == None:
+			for t in range(0, self.options.maxTime):
+				PUE[t] = 1.0
+		else:
+			jP = 0
+			for t in range(0, self.options.maxTime):
+				# Look for current values
+				ts = t*self.options.slotLength
+				while len(self.pue)>jP+1 and self.pue[jP+1].t <= ts: jP += 1
+				PUE[t] = self.pue[jP].v
+		
 		# Workload
 		if self.load != None:
 			Workload = {}
@@ -306,7 +317,8 @@ class ParasolModel:
 				optFunction += -self.options.optCost * aux * BrownPrice[t]/1000.0
 			# Add peak power cost in a linear way
 			if self.options.peakCost != None:
-				optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
+				#optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
+				optFunction += -self.options.optCost * (PeakBrown)/1000.0/30 * self.options.peakCost
 		if self.options.optBat > 0 and self.options.batCap > 0:
 			for t in range(0, self.options.maxTime):
 				aux = 0
@@ -414,7 +426,7 @@ class ParasolModel:
 				aux += LoadBrown[t]
 			if self.options.batCap > 0:
 				aux += LoadBatt[t]
-			m.addConstr(Load[t] == aux,  "LoadProvide["+str(t)+"]")
+			m.addConstr(PUE[t] * Load[t] == aux,  "LoadProvide["+str(t)+"]")
 			#m.addConstr(Load[t] <= self.options.maxSize, "MaxSize["+str(t)+"]")
 		
 		# Maximum green availability

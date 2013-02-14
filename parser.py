@@ -5,12 +5,14 @@ import os.path
 import time
 import datetime
 
-from subprocess import Popen
+from subprocess import Popen, call
 from operator import itemgetter
 
 from commons import *
 from conf import *
 from plotter import *
+
+from infrastructure import Batteries
 
 """
 Defines the scenario to evaluate the datacenter
@@ -112,53 +114,16 @@ def getFilename(scenario, setup):
 	return filename
 
 """
-Get the file with the battery lifetime
-"""
-def readBatteryLifetimeProfile():
-	batterylifetime = []
-	with open('data/leadacid.battery', 'r') as fin:
-		for line in fin.readlines():
-			# Clean line
-			line = cleanLine(line)
-			if line != '':
-				dod, cycles = line.split(' ')
-				dod = float(dod)
-				cycles = float(cycles)
-				batterylifetime.append((dod, cycles))
-	return batterylifetime
-
-# Get the cycles that cna be made with a given Depth of Discharge
-def getBatteryCycles(batterylifetime, dod):
-	prevauxdod = None
-	prevcycles = None
-	for auxdod, auxcycles in batterylifetime:
-		if dod == auxdod:
-			return auxcycles
-		elif dod < auxdod:
-			# First value
-			if dod < 0.1:
-				return 0.0
-			elif prevauxdod == None:
-				# If it is the first value, we asume it's linear from 0
-				return auxcycles * float(auxdod)/float(dod)
-			else:
-				p1 = (prevauxdod, prevcycles)
-				p2 = (auxdod, auxcycles)
-				return interpolate(p1, p2, dod)
-		prevauxdod = auxdod
-		prevcycles = auxcycles
-	return 0.0
-
-"""
 Get the depth of discharge information from the logfile
 """
 def getDepthOfDischarge(logfile):
-	numdischarges = 0
-	totaldischarge = 0.0
-	maxdischarge = 0.0
-	lifetime = 0.0 # Lifetime %
-	# Read lead acid DoD
-	batterylifetime = readBatteryLifetimeProfile()
+	# Get battery model
+	battery = Batteries()
+	# Results
+	numdischarges = 0 # How many discharges
+	totaldischarge = 0.0 # Total DoD (%)
+	maxdischarge = 0.0 # Maximum DoD (%)
+	lifetime = 0.0 # Lifetime (%)
 	
 	# Read log file
 	try:
@@ -196,7 +161,7 @@ def getDepthOfDischarge(logfile):
 									maxdischarge = batlevel0 - batlevel1
 								# Account lifetime
 								dod = batlevel0 - batlevel1
-								cycles = getBatteryCycles(batterylifetime, dod)
+								cycles = battery.getBatteryCycles(dod)
 								#print dod, '% -------->', cycles, 'cycles'
 								if cycles > 0.0:
 									lifetime += 100.0/cycles
@@ -525,6 +490,7 @@ if __name__ == "__main__":
 		# Print results
 		fout.write('<body>\n')
 		fout.write('<table>\n')
+		fout.write('<thead>\n')
 		fout.write('<tr>\n')
 		fout.write('<th></th>\n')
 		fout.write('<th colspan="5"></th>\n')
@@ -532,9 +498,10 @@ if __name__ == "__main__":
 		#fout.write('<th colspan="5">Scenario</th>\n')
 		#fout.write('<th colspan="4">Setup</th>\n')
 		fout.write('<th colspan="9">Cost</th>\n')
+		fout.write('<th colspan="1">Lifetime</th>\n')
 		fout.write('<th colspan="2">Savings</th>\n')
 		fout.write('</tr>\n')
-		fout.write('<tr>\n')
+		fout.write('<tr class="table_line">\n')
 		# Setup
 		fout.write('<th></th>\n')
 		fout.write('<th width="70px">DC Size</th>\n')
@@ -542,10 +509,10 @@ if __name__ == "__main__":
 		fout.write('<th width="80px">Location</th>\n')
 		fout.write('<th width="80px">Net meter</th>\n')
 		fout.write('<th width="80px">Workload</th>\n')
-		fout.write('<th width="80px">Solar</th>\n')
-		fout.write('<th width="80px">Battery</th>\n')
-		fout.write('<th width="80px">Deferrable</th>\n')
-		fout.write('<th width="80px">Turn on/off</th>\n')
+		fout.write('<th width="70px">Solar</th>\n')
+		fout.write('<th width="70px">Battery</th>\n')
+		fout.write('<th width="70px">Delay</th>\n')
+		fout.write('<th width="70px">On/off</th>\n')
 		# Cost
 		fout.write('<th width="80px">Energy</th>\n')
 		fout.write('<th width="80px">Peak</th>\n')
@@ -553,15 +520,22 @@ if __name__ == "__main__":
 		fout.write('<th width="80px">CAPEX</th>\n')
 		fout.write('<th width="150px" colspan="2">Total (1 year)</th>\n')
 		fout.write('<th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
+		fout.write('<th width="80px">Battery</th>\n')
 		fout.write('<th width="80px">Yearly</th>\n')
-		fout.write('<th width="80px">Ammort</th>\n')
+		fout.write('<th width="90px">Ammort</th>\n')
 		fout.write('</tr>\n')
+		fout.write('</thead>\n')
+		fout.write('<tbody>\n')
 		figure3d = {}
+		figure3dlocations = []
 		for scenario in results:
 			try:
 				# Get baseline
-				basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[70]
-				#basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
+				TOP_POSITION = 70
+				if len(results[scenario]) >= TOP_POSITION:
+					basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[TOP_POSITION]
+				else:
+					basesetup, basecost = sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup)[0]
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0), cmp=cmpsetup):
 					fout.write('<tr>\n')
@@ -575,13 +549,13 @@ if __name__ == "__main__":
 					fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (getFilename(scenario, setup)+'.html', experimentDescription))
 					# Setup
 					if setup != basesetup:
-						fout.write('<td align="center"><font color="#999999">%s</font></td>\n' % powerStr(setup.itsize)) # Datacenter size TODO
+						fout.write('<td align="center"><font color="#999999">%s</font></td>\n' % (powerStr(setup.itsize))) # Datacenter size TODO
 					else:
-						fout.write('<td align="center"><font color="#999999"><b>%s</b></font></td>\n' % powerStr(setup.itsize)) # Datacenter size TODO
-					fout.write('<td align="right">%s</td>\n' % timeStr(scenario.period))
-					fout.write('<td align="right">%s</td>\n' % setup.location.replace('_', ' ').title()[0:10])
+						fout.write('<td align="center"><font color="#999999"><b>%s</b></font></td>\n' % (powerStr(setup.itsize))) # Datacenter size TODO
+					fout.write('<td align="right">%s</td>\n' % (timeStr(scenario.period)))
+					fout.write('<td align="right">%s</td>\n' % (setup.location.replace('_', ' ').title()[0:10]))
 					fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
-					fout.write('<td align="right">%s</td>\n' % scenario.workload.title())
+					fout.write('<td align="right">%s</td>\n' % (scenario.workload.title()))
 					# Solar
 					if setup.solar == 0:
 						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
@@ -626,6 +600,20 @@ if __name__ == "__main__":
 					saveopexyear = basecost.getOPEX() - cost.getOPEX()
 					savecapex =  cost.getCAPEX() - basecost.getCAPEX()
 					ammortization = float(savecapex)/float(saveopexyear) if saveopexyear != 0.0 else 0.0
+					
+					# Lifetime battery
+					numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
+					if lifetime > 0:
+						if saveopexyear < 0:
+							fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (100.0/lifetime))
+						elif 100.0/lifetime >= ammortization:
+							fout.write('<td align="right" width="80px">%.1fy</td>\n' % (100.0/lifetime))
+						else:
+							fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (100.0/lifetime))
+					else:
+						fout.write('<td align="right" width="80px"><font color="#999999">&#9747;</font></td>\n')
+			
+					# Costs
 					if saveopexyear < 0:
 						fout.write('<td align="right"><font color="#FF0000">%s</font></td>\n' % costStr(saveopexyear))
 					else:
@@ -637,28 +625,37 @@ if __name__ == "__main__":
 					else:
 						fout.write('<td align="right">%.1f years</td>\n' % ammortization)
 					# 3D Figure
-					if setup.turnoff and setup.location == 'NEWARK_INTERNATIONAL_ARPT':
+					if setup.turnoff:
+						if setup.location not in figure3dlocations:
+							figure3dlocations.append(setup.location)
 						if (setup.solar, setup.battery) not in figure3d:
-							figure3d[(setup.solar, setup.battery)] = []
-						figure3d[(setup.solar, setup.battery)].append((setup.deferrable, ammortization))
+							figure3d[setup.solar, setup.battery] = {}
+						figure3d[setup.solar, setup.battery][setup.deferrable, setup.location] = cost.energy*TOTAL_YEARS + cost.peak*TOTAL_YEARS + cost.capex
 					fout.write('<tr/>\n')
 			except Exception, e:
 				print 'Error:', e
+		fout.write('</tbody>\n')
 		fout.write('</table>\n')
+		fout.write('<img src="3d.svg">\n')
 		fout.write('</body>\n')
 		fout.write('</html>\n')
 	
-	# 3D Figure
-	print 'Generating 3d data...'
+	# Generate 3D Figure
+	print 'Generating 3D data...'
 	with open('3d.data', 'w') as f3ddata:
+		f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
 		for solar, battery in sorted(figure3d):
-			aux = [99999999, 99999999]
-			for deferrable, ammortization in figure3d[(solar, battery)]:
-				if not deferrable:
-					aux[0] = ammortization
-				else:
-					aux[1] = ammortization
-			f3ddata.write('%.1f %.1f %.2f %.2f\n' % (solar, battery, aux[0], aux[1]))
+			aux = [99999999] * 2 * len(figure3dlocations)
+			for location in figure3dlocations:
+				if (False, location) in figure3d[solar, battery]:
+					aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
+				if (True, location) in figure3d[solar, battery]:
+					aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
+			out = '%11.1f\t%11.1f' % (solar, battery)
+			for i in range(0, len(figure3dlocations)):
+				out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
+			f3ddata.write(out+'\n')
+	call(['gnuplot', '3d.plot'])
 	
 	# Generate detailed page for experiment
 	print 'Generating details...'

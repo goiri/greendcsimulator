@@ -10,8 +10,8 @@ longitude = -74.46073
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,NEWARK_INTERNATIONAL_ARPT
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,QUITO
 #solar.data = /net/wonko/home/jlberral/solarpower/test391-full/11-alfa.data,ASWAN
-#solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT,-4h
-solar.data = data/11-alfa.data,QUITO,-4h
+solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT,-4h
+#solar.data = data/11-alfa.data,QUITO,-4h
 #solar.offset = -215d4h
 solar.capacity = 1 # W
 solar.efficiency = 1.00 # 100%
@@ -25,6 +25,7 @@ brown.power  = 13.72 #$/kW
 brown.netmetering = 0.4 # 40%
 
 # Temperature
-temperature = data/parasol.temperature
+#temperature = data/parasol.temperature
 #temperature = /net/wonko/home/jlberral/solarpower/test391-full/14-pue.data,ASWAN
-
+#temperature = data/locations.data,NEWARK_INTERNATIONAL_ARPT,-215d4h
+temperature = data/newark.temperature,NEWARK_INTERNATIONAL_ARPT
