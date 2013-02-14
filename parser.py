@@ -179,15 +179,6 @@ def getDepthOfDischarge(logfile):
 		print 'Cause:', e
 		#pass
 	
-	"""
-	print logfile
-	print 'Number of discharges:', numdischarges
-	if numdischarges > 0:
-		print 'Average discharge: %.1f%%' % (totaldischarge/numdischarges)
-	print 'Total discharge: %.1f%%' % (totaldischarge)
-	print 'Maximum discharge: %.1f%%' % (maxdischarge)
-	"""
-	
 	return numdischarges, totaldischarge, maxdischarge, lifetime
 
 def getEnergyStats(logfile):
@@ -520,9 +511,11 @@ if __name__ == "__main__":
 		fout.write('<th width="80px">CAPEX</th>\n')
 		fout.write('<th width="150px" colspan="2">Total (1 year)</th>\n')
 		fout.write('<th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
+		# Lifetime
 		fout.write('<th width="80px">Battery</th>\n')
+		# Saving
 		fout.write('<th width="80px">Yearly</th>\n')
-		fout.write('<th width="90px">Ammort</th>\n')
+		fout.write('<th width="80px">Ammort</th>\n')
 		fout.write('</tr>\n')
 		fout.write('</thead>\n')
 		fout.write('<tbody>\n')
@@ -611,12 +604,16 @@ if __name__ == "__main__":
 					# Lifetime battery
 					numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
 					if lifetime > 0:
+						batterylifetime = 100.0/lifetime
 						if saveopexyear < 0:
-							fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (100.0/lifetime))
-						elif 100.0/lifetime >= ammortization:
-							fout.write('<td align="right" width="80px">%.1fy</td>\n' % (100.0/lifetime))
+							fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (batterylifetime))
+						elif batterylifetime >= ammortization:
+							if batterylifetime > 100:
+								fout.write('<td align="right" width="80px"><font color="#999999">No use</font></td>\n')
+							else:
+								fout.write('<td align="right" width="80px"><font color="green">%.1fy</font></td>\n' % (batterylifetime))
 						else:
-							fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (100.0/lifetime))
+							fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (batterylifetime))
 					else:
 						fout.write('<td align="right" width="80px"><font color="#999999">&#9747;</font></td>\n')
 			
@@ -630,7 +627,7 @@ if __name__ == "__main__":
 					elif ammortization == 0:
 						fout.write('<td align="center"></td>\n')
 					else:
-						fout.write('<td align="right">%.1f years</td>\n' % ammortization)
+						fout.write('<td align="right">%.1fy</td>\n' % ammortization)
 					# 3D Figure
 					if setup.turnoff:
 						if setup.location not in figure3dlocations:

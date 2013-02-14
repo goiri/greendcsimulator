@@ -21,12 +21,10 @@ from parasolsolvercommons import TimeValue
 Simulator
 TODO list:
 * Compression of the load when it is deferred
-* New proposal for peak power and energy accounting
-* Infrastructure for long experiments in multiple servers (75%)
+* New proposal for peak power and energy accounting (75%)
 * Battery lifetime model (75% parser)
+* Infrastructure for long experiments in multiple servers (75%)
 * On/off peak prices around the world are tricky. We dont have summar/winter pricings
-* Compute profitability based on 15 years
-* To read: ISCA and BigHouse (ISPASS 2012)
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
