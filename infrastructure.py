@@ -132,25 +132,15 @@ class IT:
 	def __init__(self):
 		self.racks = {}
 		
-	def getMaxPower(self):
-		"""
-		maxPower = 0.0
-		for rackId in self.racks:
-			rack = self.racks[rackId]
-			# Switches
-			maxPower += rack.switch.powerpeak
-			# Servers
-			for serverId in rack.servers:
-				server = rack.servers[serverId]
-				maxPower += server.powerpeak
-		return maxPower
-		"""
-		maxServers = 0
+	def getNumServers(self):
+		numServers = 0
 		for rackId in sorted(self.racks.keys()):
 			for serverId in self.racks[rackId].servers:
-				maxServers += 1
-		return self.getPower(maxServers)
+				numServers += 1
+		return numServers
 	
+	def getMaxPower(self):
+		return self.getPower(self.getNumServers())
 	
 	"""
 	Calculate the load based on the number of servers

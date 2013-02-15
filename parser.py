@@ -1,5 +1,6 @@
 #!/usr/bin/python2.7
 
+import sys
 import os
 import os.path
 import time
@@ -25,6 +26,15 @@ class Scenario:
 	
 	def __str__(self):
 		return str(self.netmeter) + '-' + str(self.period)  + '-' + str(self.workload)
+	
+	def __cmp__(self, other):
+		if self.workload == other.workload:
+			if self.netmeter == other.netmeter:
+				return self.period - other.period
+			else:
+				return self.netmeter - other.netmeter
+		else:
+			return cmp(self.workload, other.workload)
 	
 	def __hash__(self):
 		return hash(str(self))
@@ -395,55 +405,52 @@ def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 if __name__ == "__main__":
 	#getEnergyStats('results/result-1830.0-32000-3200-23h30m-net0.40-asplos-NEWARK_INTERNATIONAL_ARPT.log')
 	
+	# Check files
+	print 'Collecting results...'
 	results = {}
-	# Generate summary
-	print 'Generating summary...'
-	with open(LOG_PATH+'summary.html', 'w') as fout:
-		fout.write('<html>\n')
-		fout.write('<head>\n')
-		fout.write('<title>Green Datacenter Simulator results</title>\n')
-		fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
-		fout.write('</head>\n')
-		
-		# Check files
-		for filename in sorted(os.listdir(LOG_PATH)):
-			#print LOG_PATH+filename
-			if filename.endswith('.log'):
-				# Get data from filename
-				split = filename[:-4].split('-')
-				split.pop(0)
-				itsize = float(split.pop(0))
-				battery = int(split.pop(0))
-				solar = int(split.pop(0))
-				period = parseTime(split.pop(0))
-				# Net metering
-				netmeter = 0.0
-				if split[0].startswith('net'):
-					netmeter = float(split.pop(0)[4:])
-				# Workload
-				workload = split.pop(0)
-				# Location
-				location = split.pop(0)
-				# Read the rest of the values
-				delay = False
-				alwayson = False
-				greenswitch = True
-				while len(split) > 0:
-					value = split.pop(0)
-					if value == 'on':
-						alwayson = True
-					elif value == 'delay':
-						delay = True
-					elif value == 'nogreenswitch':
-						greenswitch = False
-					else:
-						print 'Unknown value:', value
-				# Open file and read results
-				costenergy = 0.0
-				costpeak = 0.0
-				costcapex = 0.0
-				lastTime = 0
+	for filename in sorted(os.listdir(LOG_PATH)):
+		#print LOG_PATH+filename
+		if filename.endswith('.log'):
+			# Get data from filename
+			split = filename[:-4].split('-')
+			split.pop(0)
+			itsize = float(split.pop(0))
+			battery = int(split.pop(0))
+			solar = int(split.pop(0))
+			period = parseTime(split.pop(0))
+			# Net metering
+			netmeter = 0.0
+			if split[0].startswith('net'):
+				netmeter = float(split.pop(0)[4:])
+			# Workload
+			workload = split.pop(0)
+			# Location
+			location = split.pop(0)
+			# Read the rest of the values
+			delay = False
+			alwayson = False
+			greenswitch = True
+			while len(split) > 0:
+				value = split.pop(0)
+				if value == 'on':
+					alwayson = True
+				elif value == 'delay':
+					delay = True
+				elif value == 'nogreenswitch':
+					greenswitch = False
+				else:
+					print 'Unknown value:', value
+			# Open file and read results
+			costenergy = 0.0
+			costpeak = 0.0
+			costcapex = 0.0
+			lastTime = 0
+			try:
 				with open(LOG_PATH+filename) as f:
+					# Go to the end of the file
+					f.seek(-2*1024, os.SEEK_END)
+					f.readline()
+					# Start checking from the end
 					for line in f.readlines():
 						if line.startswith('#'):
 							line = line.replace('\n', '')
@@ -463,20 +470,24 @@ if __name__ == "__main__":
 									lastTime = expTime
 							except Exception, e:
 								print 'Error reading log file', line, e
-				progress = 100.0*lastTime/period
-				# Calculate capex
-				"""
-				costcapex = 0.0
-				costcapex += 2.28 * solar
-				costcapex += 0.213 * battery
-				"""
-				# Store results
-				scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
-				cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex)
-				setup = Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch, progress=progress)
-				if scenario not in results:
-					results[scenario] = []
-				results[scenario].append((setup, cost))
+			except Exception, e:
+				print 'Cannot read file', LOG_PATH+filename, e
+			progress = 100.0*lastTime/period
+			# Store results
+			scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
+			cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex)
+			setup = Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch, progress=progress)
+			if scenario not in results:
+				results[scenario] = []
+			results[scenario].append((setup, cost))
+	
+	print 'Generating summary...'
+	with open(LOG_PATH+'summary.html', 'w') as fout:
+		fout.write('<html>\n')
+		fout.write('<head>\n')
+		fout.write('<title>Green Datacenter Simulator results</title>\n')
+		fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
+		fout.write('</head>\n')
 		
 		# Print results
 		fout.write('<body>\n')
@@ -521,21 +532,15 @@ if __name__ == "__main__":
 		fout.write('<tbody>\n')
 		figure3d = {}
 		figure3dlocations = []
-		for scenario in results:
+		for scenario in sorted(results.keys()):
 			try:
 				# Get baseline
 				basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[0]
 				for setup, cost in results[scenario]:
-					if setup.location=='NEWARK_INTERNATIONAL_ARPT' and setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
+					#if setup.location=='NEWARK_INTERNATIONAL_ARPT' and 
+					if setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
 						basesetup = setup
 						basecost = cost
-				"""
-				TOP_POSITION = 70
-				if len(results[scenario]) >= TOP_POSITION:
-					basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[TOP_POSITION] # , cmp=cmpsetup
-				else:
-					basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[0] #, cmp=cmpsetup
-				"""
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0)): #, cmp=cmpsetup
 					fout.write('<tr>\n')
@@ -548,10 +553,7 @@ if __name__ == "__main__":
 						experimentDescription = '<b>'+experimentDescription+'</b>'
 					fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (getFilename(scenario, setup)+'.html', experimentDescription))
 					# Setup
-					if setup != basesetup:
-						fout.write('<td align="center"><font color="#999999">%s</font></td>\n' % (powerStr(setup.itsize))) # Datacenter size TODO
-					else:
-						fout.write('<td align="center"><font color="#999999"><b>%s</b></font></td>\n' % (powerStr(setup.itsize))) # Datacenter size TODO
+					fout.write('<td align="center">%s</td>\n' % (powerStr(setup.itsize)))
 					fout.write('<td align="right">%s</td>\n' % (timeStr(scenario.period)))
 					fout.write('<td align="right">%s</td>\n' % (setup.location.replace('_', ' ').title()[0:10]))
 					fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
@@ -602,7 +604,10 @@ if __name__ == "__main__":
 					ammortization = float(savecapex)/float(saveopexyear) if saveopexyear != 0.0 else 0.0
 					
 					# Lifetime battery
-					numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
+					if '--nobattery' in sys.argv:
+						lifetime = 0
+					else:
+						numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
 					if lifetime > 0:
 						batterylifetime = 100.0/lifetime
 						if saveopexyear < 0:
@@ -644,40 +649,41 @@ if __name__ == "__main__":
 		fout.write('</body>\n')
 		fout.write('</html>\n')
 	
-	# Generate 3D Figure
-	print 'Generating 3D data...'
-	with open('3d.data', 'w') as f3ddata:
-		f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
-		for solar, battery in sorted(figure3d):
-			aux = [99999999] * 2 * len(figure3dlocations)
-			for location in figure3dlocations:
-				if (False, location) in figure3d[solar, battery]:
-					aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
-				if (True, location) in figure3d[solar, battery]:
-					aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
-			out = '%11.1f\t%11.1f' % (solar, battery)
-			for i in range(0, len(figure3dlocations)):
-				out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
-			f3ddata.write(out+'\n')
-	call(['gnuplot', '3d.plot'])
-	
-	# Generate detailed page for experiment
-	print 'Generating details...'
-	total = 0
-	for scenario in results:
-		for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
-			saveDetails(scenario, setup, cost)
-			total += 1
-	
-	# Generate figures
-	print 'Generating monthly figures...'
-	current = 0
-	last = datetime.datetime.now()
-	for scenario in results:
-		for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
-			generateFigures(scenario, setup)
-			current+=1
-			if datetime.datetime.now()-last > datetime.timedelta(seconds=10):
-				print '%.1f%%' % (100.0*current/total)
-				last = datetime.datetime.now()
+	if '--summary' not in sys.argv:
+		# Generate 3D Figure
+		print 'Generating 3D data...'
+		with open('3d.data', 'w') as f3ddata:
+			f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
+			for solar, battery in sorted(figure3d):
+				aux = [99999999] * 2 * len(figure3dlocations)
+				for location in figure3dlocations:
+					if (False, location) in figure3d[solar, battery]:
+						aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
+					if (True, location) in figure3d[solar, battery]:
+						aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
+				out = '%11.1f\t%11.1f' % (solar, battery)
+				for i in range(0, len(figure3dlocations)):
+					out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
+				f3ddata.write(out+'\n')
+		call(['gnuplot', '3d.plot'])
+		
+		# Generate detailed page for experiment
+		print 'Generating details...'
+		total = 0
+		for scenario in sorted(results.keys()):
+			for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
+				saveDetails(scenario, setup, cost)
+				total += 1
+		
+		# Generate figures
+		print 'Generating monthly figures...'
+		current = 0
+		last = datetime.datetime.now()
+		for scenario in sorted(results.keys(), reverse=True):
+			for setup, cost in sorted(results[scenario], key=itemgetter(0), reverse=True): # , cmp=cmpsetup
+				generateFigures(scenario, setup)
+				current+=1
+				if datetime.datetime.now()-last > datetime.timedelta(seconds=10):
+					print '%.1f%%' % (100.0*current/total)
+					last = datetime.datetime.now()
 	

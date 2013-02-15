@@ -1,6 +1,8 @@
 workload.deferrable = false
-workload.minimum = 8
+workload.compression = 1.1 # When the load is delayed, it is compressed by 10%
 workload.repeat = true
+workload.minimum = 8
+workload.scale = 64
 0	10.3592017738
 900	8.0
 1800	12.2008928571

@@ -1,6 +1,7 @@
 workload.deferrable = false
 workload.minimum = 8
 workload.repeat = true
+workload.scale = 64
 0h	8
 1h	12
 2h	20

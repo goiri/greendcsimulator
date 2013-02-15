@@ -93,6 +93,9 @@ class Simulator:
 		stateChargeBattery = False
 		stateNetMeter = False
 		
+		# Get the number of servers available
+		numServers = self.infra.it.getNumServers()
+		
 		# Datacenter
 		# Location traces
 		# Workload
@@ -185,8 +188,7 @@ class Simulator:
 						pue = self.infra.cooling.getPUE(temperature)
 						puePredi.append(TimeValue(0, pue))
 						# Workload
-						reqNodes = self.workload.getLoad(time)
-						reqNodes = self.workload.getLoad(time)
+						reqNodes = self.workload.getLoad(time)*numServers
 						loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 						#coolingPower = self.infra.cooling.getPower(temperature)
 						w = loadPower #+ coolingPower
@@ -204,11 +206,12 @@ class Simulator:
 						temperature = self.location.getTemperature(time + predseconds)
 						pue = self.infra.cooling.getPUE(temperature)
 						puePredi.append(TimeValue(predseconds, pue))
-						# Workload prediction
+						# Actual workload
 						#reqNodes = self.workload.getLoad(time + predseconds)
+						# Workload prediction
 						reqNodes = 0.0
 						for i in range(0, int(60.0*60.0/TIMESTEP)):
-							reqNodes += self.workload.getLoad(time + predseconds + i*TIMESTEP)
+							reqNodes += self.workload.getLoad(time + predseconds + i*TIMESTEP)*numServers
 						reqNodes = float(reqNodes)/(60.0*60.0/TIMESTEP)
 						loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 						#coolingPower = self.infra.cooling.getPower(temperature)
@@ -224,7 +227,7 @@ class Simulator:
 				if self.greenswitch:
 					print "No solution at", timeStr(time)
 				# Calculate workload: Get the number of nodes required
-				reqNodes = self.workload.getLoad(time)
+				reqNodes = self.workload.getLoad(time)*numServers
 				workload = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 				temperature = self.location.getTemperature(time)
 				#coolingPower = self.infra.cooling.getPower(temperature)
@@ -246,7 +249,7 @@ class Simulator:
 					stateNetMeter = False
 			else:
 				# Load
-				reqNodes = self.workload.getLoad(time)
+				reqNodes = self.workload.getLoad(time)*numServers
 				workload = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
 				# Cooling
 				temperature = self.location.getTemperature(time)
@@ -266,7 +269,12 @@ class Simulator:
 				# Delay load
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
-					prevload += (workload - execload)*(TIMESTEP/(60.0*60.0))
+					difference = (workload - execload)*(TIMESTEP/(60.0*60.0))
+					if difference >= 0.0:
+						prevload += difference
+					else:
+						# Depending on the workload, we may compress the load when delaying
+						prevload += self.workload.compression*difference
 					if prevload < 0:
 						prevload = 0.0
 					

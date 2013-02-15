@@ -4,6 +4,8 @@ PERIOD="1y"
 WORKLOAD="data/workload/variable.workload"
 WORKLOAD="data/workload/asplos.workload"
 # WORKLOAD="data/workload/hotmail.workload"
+WORKLOAD="data/workload/wikipedia.workload"
+WORKLOAD="data/workload/flash.workload"
 
 NETMETER_0=0.0
 NETMETER_WR=0.4

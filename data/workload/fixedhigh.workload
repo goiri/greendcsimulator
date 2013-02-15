@@ -1,3 +1,4 @@
 workload.deferrable = false
 workload.minimum = 8
+workload.scale = 64
 0 64
