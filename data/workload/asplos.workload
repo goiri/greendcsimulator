@@ -1,10 +1,10 @@
 workload.deferrable = false
-workload.compression = 1.1 # When the load is delayed, it is compressed by 10%
+workload.compression = 3.0 #2.0 # When the load is delayed, it is compressed by 3
 workload.repeat = true
 workload.minimum = 8
 workload.scale = 64
 0	10.3592017738
-900	8.0
+900	0.0
 1800	12.2008928571
 2700	21.8084632517
 3600	27.0111111111
@@ -49,9 +49,9 @@ workload.scale = 64
 38700	27.3131991051
 39600	47.2777777778
 40500	19.0111111111
-41400	8.0
-42300	8.0
-43200	8.0
+41400	0.0
+42300	0.0
+43200	0.0
 44100	11.579064588
 45000	14.6266666667
 45900	16.8888888889
@@ -98,5 +98,5 @@ workload.scale = 64
 82800	12.3266666667
 83700	21.9576837416
 84600	10
-85500	3.0
+85500	0.0
 86400	10.3592017738

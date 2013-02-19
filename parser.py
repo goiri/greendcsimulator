@@ -191,6 +191,9 @@ def getDepthOfDischarge(logfile):
 	
 	return numdischarges, totaldischarge, maxdischarge, lifetime
 
+"""
+Get the energy statistics for a run
+"""
 def getEnergyStats(logfile):
 	try:
 		brownenergy = 0.0
@@ -251,7 +254,6 @@ def getEnergyStats(logfile):
 		print '\tPower cost: $%.2f' % costpeak
 	except Exception, e:
 		print e
-	
 
 """
 Save the details of an experiment with a datacenter with a given setup.
@@ -328,18 +330,22 @@ def saveDetails(scenario, setup, cost):
 """
 Generate figures for a setup and scenario
 """
-def generateFigures(scenario, setup):
+def genFigures(filenamebase):
 	# Multi process
 	MAX_PROCESSES = 8
 	processes = []
+	now = time.time()
+	newDataFile = False
 	# Generate data for plotting
-	inputfile =  LOG_PATH+getFilename(scenario, setup)+'.log'
+	inputfile =  LOG_PATH+filenamebase+'.log'
 	if os.path.isfile(inputfile):
 		# Generate input data (make he figure boxed)
-		datafile = '/tmp/'+LOG_PATH+getFilename(scenario, setup)+'.data'
+		datafile = '/tmp/'+LOG_PATH+filenamebase+'.data'
 		if not os.path.isdir(datafile[:datafile.rfind('/')]):
 			os.makedirs(datafile[:datafile.rfind('/')])
-		genPlotData(inputfile, datafile)
+		if not os.path.isfile(datafile) or os.path.getmtime(datafile) < now - parseTime('6h'):
+			genPlotData(inputfile, datafile)
+			newDataFile = True
 		# Generate a figure for each month
 		for i in range(1, 12+1):
 			daystart = int(datetime.date(2012, i, 1).strftime('%j'))-1
@@ -347,15 +353,18 @@ def generateFigures(scenario, setup):
 				dayend = int(datetime.date(2012, i+1, 1).strftime('%j'))
 			else:
 				dayend = int(datetime.date(2012, i, 31).strftime('%j'))
-			# Generate figure for each month
-			auxoutfile = LOG_PATH+'img/'+getFilename(scenario, setup)+'-'+str(i)+'.png'
-			p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % (daystart*24), '%d' % (dayend*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
-			processes.append(p)
 			
-			# Generate figure for each day
-			auxoutfile = LOG_PATH+'img/'+getFilename(scenario, setup)+'-'+str(i)+'-day.png'
-			p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % ((daystart+15)*24), '%d' % ((daystart+18)*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
-			processes.append(p)
+			# Generate figure for each month
+			auxoutfile = LOG_PATH+'img/'+filenamebase+'-'+str(i)+'.png'
+			if not os.path.isfile(auxoutfile) or os.path.getmtime(auxoutfile) < now - parseTime('6h') or os.path.getmtime(datafile) < now - parseTime('6h'):
+				p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % (daystart*24), '%d' % (dayend*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+				processes.append(p)
+			
+			# Generate figure for a couple days in a month
+			auxoutfile = LOG_PATH+'img/'+filenamebase+'-'+str(i)+'-day.png'
+			if not os.path.isfile(auxoutfile) or os.path.getmtime(auxoutfile) < now - parseTime('6h') or os.path.getmtime(datafile) < now - parseTime('6h'):
+				p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % ((daystart+15)*24), '%d' % ((daystart+18)*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+				processes.append(p)
 			
 			# Wait until we only have 8 figures to go
 			while len(processes)>MAX_PROCESSES:
@@ -371,6 +380,12 @@ def generateFigures(scenario, setup):
 				processes.remove(p)
 		if len(processes)>0:
 			time.sleep(0.5)
+
+"""
+Generate figures for a filename base
+"""
+def generateFigures(scenario, setup):
+	genFigures(getFilename(scenario, setup))
 
 """
 Draws an HTML bar chart
@@ -541,6 +556,8 @@ if __name__ == "__main__":
 					if setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
 						basesetup = setup
 						basecost = cost
+						if setup.location=='NEWARK_INTERNATIONAL_ARPT':
+							break
 				# Show result
 				for setup, cost in sorted(results[scenario], key=itemgetter(0)): #, cmp=cmpsetup
 					fout.write('<tr>\n')
@@ -679,8 +696,8 @@ if __name__ == "__main__":
 		print 'Generating monthly figures...'
 		current = 0
 		last = datetime.datetime.now()
-		for scenario in sorted(results.keys(), reverse=True):
-			for setup, cost in sorted(results[scenario], key=itemgetter(0), reverse=True): # , cmp=cmpsetup
+		for scenario in sorted(results.keys(), reverse=False):
+			for setup, cost in sorted(results[scenario], key=itemgetter(0), reverse=False): # , cmp=cmpsetup
 				generateFigures(scenario, setup)
 				current+=1
 				if datetime.datetime.now()-last > datetime.timedelta(seconds=10):

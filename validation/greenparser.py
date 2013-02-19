@@ -1,7 +1,9 @@
 #!/usr/bin/env python2.7
 
-LOG_SOURCE = 'log-222-swim-source-onoff-netwr-peak-source.log'
+#LOG_SOURCE = 'log-222-swim-source-onoff-netwr-peak-source.log'
 #LOG_SOURCE = 'log-133-swim-nobattery-onoff-delay-netwr-peak-source.log'
+LOG_SOURCE = 'log-220-swim-source-onoff-netwr-peak-source.log'
+#LOG_SOURCE = 'log-230-swim-source-onoff-delay-netwr-peak-source.log'
 PERIOD_LENGTH = 15*60
 
 if __name__ == "__main__":

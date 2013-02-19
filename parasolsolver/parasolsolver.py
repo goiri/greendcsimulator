@@ -9,8 +9,7 @@ from parasolsolvercommons import *
 
 from datetime import datetime
 
-
-
+# Load Gurobi libraries
 try:
 	# Gurobi
 	# export LD_LIBRARY_PATH="/home/goiri/hadoop-parasol/solver/gurobi500/linux64/lib"
@@ -27,6 +26,9 @@ try:
 except ImportError, e:
 	print 'export LD_LIBRARY_PATH='+GUROBI_PATH+'/lib'
 
+"""
+Model of Parasol using MILP.
+"""
 class ParasolModel:
 	def __init__(self):
 		self.options = SolverOptions()
@@ -36,126 +38,15 @@ class ParasolModel:
 		self.load = None
 		self.greenAvail = None
 		self.brownPrice = None
+		self.pue = None
 	
-	"""
-	def solvePeak(self, jobs=None, load=None, greenAvail=None, brownPrice=None, initial=None, steps=False, previousPeak=0.0, stateChargeBattery=False, stateNetMeter=False):
-		# Boundaries for dicotomic search
-		bottom = previousPeak # 0 Watt
-		top = self.options.maxSize + self.options.batChargeRate
-		bottomCost = None
-		middleCost = None
-		topCost = topCostAux = None
-		
-		# Calculate top and bottom
-		# Top
-		obj, sol = self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, peak=top)
-		if obj != None:
-			topCost = self.calculateElectricityBill(sol, previousPeak)
-			topCostAux = topCost
-		# Bottom
-		obj, sol = self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, peak=bottom)
-		if obj != None:
-			bottomCost = self.calculateElectricityBill(sol, previousPeak)
-		
-		if self.options.peakCost!=None and self.options.peakCost!=0.0:
-			# Find bottom using dicomotic search
-			while (top-bottom) > 0.5:
-				middle = bottom + (top-bottom)/4.0
-				obj, sol = self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, peak=middle)
-				if obj != None:
-					middleCost = self.calculateElectricityBill(sol, previousPeak)
-					if middleCost <= topCost:
-						top = middle
-						topCost = middleCost
-					else:
-						#bottom = middle
-						#bottomCost = middleCost
-						top = middle
-						topCost = middleCost
-				else:
-					middleCost = None
-					bottom = middle
-					bottomCost = middleCost
-		
-			# Set valid area	
-			bottom = middle
-			bottomCost = middleCost
-			if bottomCost == None:
-				bottom = top
-				bottomCost = topCost
-			top = self.options.maxSize + self.options.batChargeRate
-			topCost = topCostAux
-
-			# Start dicotomic search in valid area
-			while (top-bottom) > 0.5:
-				middle = bottom + (top-bottom)/4.0
-				obj, sol = self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, peak=middle)
-				if obj != None:
-					middleCost = self.calculateElectricityBill(sol, previousPeak)
-					if middleCost <= topCost+0.0000001:
-						top = middle
-						topCost = middleCost
-					else:
-						bottom = middle
-						bottomCost = middleCost
-				else:
-					# No solution
-					bottom = middle
-					bottomCost = None
-					middle = top
-					middleCost = topCost
-		
-		# Check solution
-		if bottomCost != None:
-			middle = bottom
-			middleCost = bottomCost
-		if middleCost == None:
-			middle = top
-			middleCost = topCost
-		middle = math.ceil(middle)
-		
-		# Calculate final value
-		self.obj, self.sol = self.solve(jobs=jobs, load=load, greenAvail=greenAvail, brownPrice=brownPrice, initial=initial, peak=middle, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
-		
-		return self.obj, self.sol
-		
-	def calculateElectricityBill(self, sol, previousPeak):
-		# Calculate electricity cost
-		peakBrown = 0.0 # Watts
-		energyCost = 0.0 # Dollars
-		netMeterMoney = 0.0 # Dollars
-		peakCost = 0.0 # Dollars
-		# Energy cost
-		for t in range(0, self.options.maxTime):
-			if self.brownPrice != None:
-				# Peak and energy
-				brown = 0
-				if "LoadBrown["+str(t)+"]" in sol:
-					brown += sol["LoadBrown["+str(t)+"]"]
-				if "BattBrown["+str(t)+"]" in sol:
-					brown += sol["BattBrown["+str(t)+"]"]
-				if brown > peakBrown:
-					peakBrown = brown
-				energyCost += brown*(self.options.slotLength/3600.0)*sol["BrownPrice["+str(t)+"]"]/1000.0
-				# Net metering
-				if self.greenAvail != None and self.options.netMeter != None:
-					netMeterMoney += sol["NetGreen["+str(t)+"]"]*self.options.netMeter*(self.options.slotLength/3600.0)*sol["BrownPrice["+str(t)+"]"]/1000.0
-		# Peak cost
-		if peakBrown > previousPeak and self.options.peakCost!=None:
-			peakCost = ((peakBrown-previousPeak)/1000.0)*self.options.peakCost
-			peakCost = peakCost/(30*24) * self.options.maxTime # 30 days distributed in the window
-		return energyCost + peakCost - netMeterMoney
-	"""
-	
-	def solvePeak(self, jobs=None, load=None, initial=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
-		return self.solve(jobs=jobs, initial=initial, load=load, greenAvail=greenAvail, brownPrice=brownPrice, pue=pue, steps=steps, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
-	
-	# Gurobi solver
+	# Solve problem using Gurobi
 	def solve(self, jobs=None, initial=None, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
-		self.obj = None
+		# Solution and objective
 		self.sol = None
-			
-		# Init
+		self.obj = None
+		
+		# Initialize parameters
 		self.jobs = jobs
 		self.load = load
 		
@@ -253,7 +144,7 @@ class ParasolModel:
 		# Finish variables declaration
 		m.update()
 		
-		# Starting solution
+		# Set starting solution
 		if initial != None and self.jobs != None:
 			#for j in jobs:
 				#StartJob[j.id].start = self.options.maxTime
@@ -282,6 +173,7 @@ class ParasolModel:
 		# PUE
 		PUE = {}
 		if self.pue == None:
+			# Default PUE
 			for t in range(0, self.options.maxTime):
 				PUE[t] = 1.0
 		else:
@@ -318,7 +210,7 @@ class ParasolModel:
 			# Add peak power cost in a linear way
 			if self.options.peakCost != None:
 				#optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
-				optFunction += -self.options.optCost * (PeakBrown)/1000.0/30 * self.options.peakCost
+				optFunction += -self.options.optCost * (PeakBrown)/1000.0/30 * self.options.peakCost # Account the month for just one day
 		if self.options.optBat > 0 and self.options.batCap > 0:
 			for t in range(0, self.options.maxTime):
 				aux = 0
@@ -346,13 +238,13 @@ class ParasolModel:
 			optFunction += quicksum((self.options.maxTime - t)*0.1 * (Load[t]-Workload[t]) for t in range(0, self.options.maxTime))
 
 		
-		# Avoid net metering and battery changes
+		# Add a delta to avoid net metering and battery changes, 
 		if self.greenAvail != None:
 			if stateChargeBattery:
-				optFunction += 0.001*(BattGreen[0]+LoadGreen[0])
+				optFunction += 0.00001*(BattGreen[0]+LoadGreen[0])
 			elif stateNetMeter:
 				if  self.brownPrice != None:
-					optFunction += 0.001*(NetGreen[0]+LoadGreen[0])
+					optFunction += 0.00001*(NetGreen[0]+LoadGreen[0])
 
 		# Dump objective function
 		m.setObjective(optFunction, GRB.MAXIMIZE)
@@ -402,7 +294,7 @@ class ParasolModel:
 				# Checking previous load is actually executed
 				if self.options.optPerf == 0:
 					sumLoad = quicksum(Load[t] for t in range(0, self.options.maxTime))
-					sumWorkload = self.options.prevLoad + quicksum(Workload[t] for t in range(0, self.options.maxTime))
+					sumWorkload = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, self.options.maxTime))
 					m.addConstr(sumLoad >= sumWorkload, "WorkloadMin")
 				else:
 					# We don't need to run everything if we try to minimize the difference
@@ -412,7 +304,7 @@ class ParasolModel:
 				#for t in range(0, self.options.maxTime):
 				for t in range(1, self.options.maxTime):
 					sumLoadT = quicksum(Load[t] for t in range(0, t))
-					sumWorkloadT = self.options.prevLoad + quicksum(Workload[t] for t in range(0, t))
+					sumWorkloadT = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, t))
 					m.addConstr(sumLoadT <= sumWorkloadT, "WorkloadMin["+str(t)+"]") # +1 to have some margin
 		
 		# Load distribution

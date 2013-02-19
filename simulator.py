@@ -20,11 +20,12 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
-* Compression of the load when it is deferred
-* New proposal for peak power and energy accounting (75%)
 * Battery lifetime model (75% parser)
-* Infrastructure for long experiments in multiple servers (75%)
 * On/off peak prices around the world are tricky. We dont have summar/winter pricings
+TEST list:
+* Compression of the load when it is deferred
+* New proposal for peak power and energy accounting
+
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -113,8 +114,27 @@ class Simulator:
 			fout = None
 			print e
 		
+		# Use GreenSwitch policy
+		solver = ParasolModel()
+		solver.options.optCost = 1.0
+		# Load
+		solver.options.loadDelay = self.workload.deferrable
+		# TODO
+		solver.options.compression = self.workload.compression
+		solver.options.minSize = self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff)
+		#solver.options.minSize = self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff)
+		solver.options.maxSize = self.infra.it.getMaxPower()
+		# Power infrastructure costs
+		solver.options.netMeter = self.location.netmetering
+		solver.options.peakCost = self.location.brownpowerprice
+		# Battery
+		solver.options.batEfficiency = self.infra.battery.efficiency
+		solver.options.batCap = self.infra.battery.capacity
+		solver.options.batDischargeMax = 0.20 # 20% DoD
+		
 		# Iterate maximum time PERIOD in steps of TIMESTEP
 		for t in range(0, self.period/TIMESTEP):
+			# Collect current data
 			time = t*TIMESTEP
 			brownenergyprice = self.location.getBrownPrice(time)
 			temperature = self.location.getTemperature(time)
@@ -134,38 +154,17 @@ class Simulator:
 				# If we don't use GreenSwitch, there is no solution
 				sol = None
 			else:
-				# Use GreenSwitch policy
-				solver = ParasolModel()
-				solver.options.optCost = 1.0
-				# Load
-				solver.options.loadDelay = self.workload.deferrable
+				# Update GreenSwitch policy parameters
 				solver.options.prevLoad = prevload
-				solver.options.minSize = self.infra.it.getPower(self.workload.minimum, minimum=True, turnoff=self.turnoff)
-				solver.options.maxSize = self.infra.it.getMaxPower()
-				# Power infrastructure costs
-				solver.options.netMeter = self.location.netmetering
-				solver.options.peakCost = self.location.brownpowerprice
 				solver.options.previousPeak = peakbrown
 				#solver.options.previousPeak = 0.95*peakbrown
 				#solver.options.previousPeak = 0.85*peakbrown
 				#solver.options.previousPeak = 0.0
 				# Battery
-				solver.options.batCap = self.infra.battery.capacity
 				solver.options.batIniCap = battery
-				#solver.options.batDischargeMax = 0.235294117647
-				solver.options.batDischargeMax = 0.20 # 20% DoD
-				solver.options.batEfficiency = self.infra.battery.efficiency
-				
-				# TODO DEBUG
-				#solver.options.debug = 3
-				"""
-				print timeStr(time)
-				print 'Input:'
-				print "  Size:", solver.options.minSize, solver.options.maxSize, 'W'
-				print "  Max time:", solver.options.maxTime, 'h'
-				print "  Peak cost:", solver.options.peakCost
-				print "  Batt:", solver.options.batIniCap, solver.options.batCap, solver.options.batDischargeMax, '%.1f%%' % (100.0*solver.options.batIniCap/solver.options.batCap)
-				"""
+				# Check battery lowest capacity
+				if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap < (1.0-solver.options.batDischargeMax):
+					solver.options.batDischargeMax = 1.0 - solver.options.batIniCap/solver.options.batCap + 0.01
 				
 				# TODO Workload prediction
 				workloadPrediction = False
@@ -176,7 +175,7 @@ class Simulator:
 				puePredi = []
 				worklPredi = []
 				for predhour in range(0, 24):
-					# Actual values
+					# Current values
 					if predhour == 0:
 						# Green available
 						greenAvail.append(TimeValue(0, greenpower))
@@ -189,11 +188,11 @@ class Simulator:
 						puePredi.append(TimeValue(0, pue))
 						# Workload
 						reqNodes = self.workload.getLoad(time)*numServers
-						loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
+						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 						#coolingPower = self.infra.cooling.getPower(temperature)
 						w = loadPower #+ coolingPower
 						worklPredi.append(TimeValue(0, w))
-					# Predictions
+					# Predicted values
 					else:
 						predseconds = predhour*60*60
 						# Green availability prediction: right now is perfect knowledge
@@ -208,19 +207,19 @@ class Simulator:
 						puePredi.append(TimeValue(predseconds, pue))
 						# Actual workload
 						#reqNodes = self.workload.getLoad(time + predseconds)
-						# Workload prediction
+						# Workload average based on prediction
 						reqNodes = 0.0
 						for i in range(0, int(60.0*60.0/TIMESTEP)):
-							reqNodes += self.workload.getLoad(time + predseconds + i*TIMESTEP)*numServers
+							reqNodes += self.workload.getLoad(time + predseconds + i*TIMESTEP, )*numServers
 						reqNodes = float(reqNodes)/(60.0*60.0/TIMESTEP)
-						loadPower = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
+						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 						#coolingPower = self.infra.cooling.getPower(temperature)
 						w = loadPower #+ coolingPower
-						# w = 1000.0
+						#w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
-				obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
+				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
 				
 			# Check if we have a GreenSwitch solution
 			if sol == None:
@@ -228,7 +227,7 @@ class Simulator:
 					print "No solution at", timeStr(time)
 				# Calculate workload: Get the number of nodes required
 				reqNodes = self.workload.getLoad(time)*numServers
-				workload = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
+				workload = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 				temperature = self.location.getTemperature(time)
 				#coolingPower = self.infra.cooling.getPower(temperature)
 				pue = self.infra.cooling.getPUE(temperature)
@@ -250,13 +249,14 @@ class Simulator:
 			else:
 				# Load
 				reqNodes = self.workload.getLoad(time)*numServers
-				workload = self.infra.it.getPower(reqNodes, turnoff=self.turnoff)
+				workload = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 				# Cooling
 				temperature = self.location.getTemperature(time)
 				#coolingPower = self.infra.cooling.getPower(temperature)
 				pue = self.infra.cooling.getPUE(temperature)
 				# Get solution from solver
-				execload = round(sol['Load[0]'], 4)
+				#execload = round(sol['Load[0]'], 4)
+				execload = sol['Load[0]']
 				#execload = round((sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'])/pue, 4)
 				
 				# Calculate brown power and net metering
@@ -265,6 +265,7 @@ class Simulator:
 				# Battery
 				batdischarge = sol['LoadBatt[0]']
 				batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
+				load = sol['LoadBrown[0]'] + sol['LoadGreen[0]'] + sol['LoadBatt[0]']
 				
 				# Delay load
 				if self.workload.deferrable:
@@ -277,45 +278,76 @@ class Simulator:
 						prevload += self.workload.compression*difference
 					if prevload < 0:
 						prevload = 0.0
-					
-				# Fix solution to match actual system
+				
+				# Fix solution to match the actual system (Parasol)
 				# Sometimes the solver says to run more than the load we have there
 				if execload > workload+prevload:
-					execload = workload+prevload
-				# If we charge, we cannot do net metering
-				if batcharge>0 and netpower>0:
-					netpower = 0
+					surplus = execload - (workload+prevload)
+					execload -= surplus
+					brownpower -= surplus
+					if brownpower < 0.0:
+						batdischarge += brownpower
+						if batdischarge < 0.0:
+							if batcharge > 0.0:
+								batcharge += -batdischarge
+							else:
+								netpower += -batdischarge
+							batdischarge = 0.0
+						brownpower = 0.0
+				# If we charge, we cannot do net metering at the same time
+				if batcharge > 0.0 and netpower > 0.0:
 					batcharge += netpower
-				# If we have surplus green power, use it for what is being used before
-				if execload + batcharge + netpower < greenpower:
-					if batcharge > 0:
-						batcharge = greenpower - execload
-					else:
-						netpower = greenpower - execload
+					netpower = 0.0
+				# If we are using less than what the solver gave us, adjust it
+				inPower = greenpower + brownpower + batdischarge
+				outPower = execload + netpower + batcharge
+				if abs(inPower-outPower) > 1.0:
+					print timeStr(time), 'We have a disadjustment'
+					print '  IN:  %.1fW' % (greenpower + brownpower + batdischarge)
+					print '  OUT: %.1fW' % (execload + netpower + batcharge)
+					print '  Green: %.1fW' % greenpower
+					print '  Brown: %.1fW' % brownpower
+					print '  BDisc: %.1fW' % batdischarge
+					print '  ='
+					print '  NetMe: %.1fW' % netpower
+					print '  BChar: %.1fW' % batcharge
+					print '  Load:  %.1fW' % execload
+					if brownpower > 0.0:
+						brownpower = execload + netpower + batcharge - greenpower - batdischarge
+						if brownpower < 0.0:
+							brownpower = 0.0
+					if batdischarge > 0.0:
+						batdischarge = execload + netpower + batcharge - greenpower - brownpower
+						if batdischarge < 0.0:
+							batdischarge = 0.0
+					# Surplus green
+					if batdischarge == 0.0 and brownpower == 0.0:
+						# If we are charging, charge more
+						if batcharge > 0.0 or stateChargeBattery:
+							batcharge += greenpower - execload
+						# Otherwise, just net meter
+						else:
+							netpower += greenpower - execload
+						brownpower = 0.0
 				
-				# Charge battery
+				# Charge/discharge battery
 				battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
 				if battery > self.infra.battery.capacity:
 					battery = self.infra.battery.capacity
 				
 				# Change state
-				if batcharge > 0:
+				if batcharge > 0.0:
 					stateChargeBattery = True
 				else:
 					stateChargeBattery = False
-				if netpower > 0:
+				if netpower > 0.0:
 					stateNetMeter = True
 				else:
 					stateNetMeter = False
-			
+				
 			# Check peak brown power
 			if brownpower > peakbrown:
 				peakbrown = brownpower
-			
-			# DEBUG
-			#print timeStr(time), sol['PeakBrown'], peakbrown
-			#print timeStr(time), '\t%.1f'%brownpower, '\t%.1f'%greenpower, '\t%.1f'%netpower, '\t%.1f'%batcharge, '\t%.1f'%batdischarge, '\t%.1f' % (100.0*solver.options.batIniCap/solver.options.batCap), '\t%.1f' % (solver.options.previousPeak)
-			#print '%10s' % timeStr(time), '\t%6.1f' % workload, '\t%6.1f' % coolingpower, '\t%6.1f' % execload, '\t%6.1f' % (execload-workload), '\t', prevload
 			
 			# Account operational costs
 			# Grid electricity
@@ -332,7 +364,6 @@ class Simulator:
 			
 			# Logging
 			if fout != None:
-				#fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, coolingpower, execload, prevload))
 				fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, execload*(pue-1.0), execload, prevload))
 				fout.flush()
 		

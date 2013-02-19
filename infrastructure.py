@@ -148,8 +148,9 @@ class IT:
 	@param minimum
 	@param turnoff
 	"""
-	def getPower(self, numServers, minimum=False, turnoff=True):
+	def getPower(self, numServers, minimum=0, turnoff=True):
 		power = 0.0
+		auxminimum = minimum
 		reqServers = numServers
 		# Walk the racks
 		for rackId in sorted(self.racks.keys()):
@@ -165,13 +166,12 @@ class IT:
 			for serverId in self.racks[rackId].servers:
 				# Add server power
 				if reqServers > 0:
-					if minimum:
-						power += self.racks[rackId].servers[serverId].poweridle
-					else:
-						power += self.racks[rackId].servers[serverId].powerpeak
+					power += self.racks[rackId].servers[serverId].powerpeak
 					reqServers -= 1
-					if reqServers < 0:
-						reqServers = 0
+					auxminimum -= 1
+				elif auxminimum > 0:
+					power += self.racks[rackId].servers[serverId].poweridle
+					auxminimum -= 1
 				elif turnoff == False:
 					power += self.racks[rackId].servers[serverId].poweridle
 				else:
@@ -341,10 +341,10 @@ if __name__ == "__main__":
 	for outtemp in range(15, 38):
 		print outtemp, infra.cooling.getPower(outtemp)
 	
-	
 	print 'Nothing: %.1fW' % infra.it.getPower(0)
-	print 'Covering subset: %.1fW' % infra.it.getPower(8, minimum=True)
-	print 'Covering subset running: %.1fW' % infra.it.getPower(8)
-	print 'Peak: %.1fW' % infra.it.getPower(64)
+	print 'Covering subset: %.1fW' % infra.it.getPower(0, minimum=8)
+	print 'Covering subset running 4: %.1fW' % infra.it.getPower(4, minimum=8)
+	print 'Covering subset running 8: %.1fW' % infra.it.getPower(8, minimum=8)
+	print 'Peak: %.1fW' % infra.it.getPower(64, minimum=8)
 	print 'Peak: %.1fW' % infra.it.getMaxPower()
 	

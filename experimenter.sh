@@ -1,11 +1,14 @@
 #!/bin/bash
 
 PERIOD="1y"
-WORKLOAD="data/workload/variable.workload"
+
 WORKLOAD="data/workload/asplos.workload"
-# WORKLOAD="data/workload/hotmail.workload"
+WORKLOAD="data/workload/hotmail.workload"
+WORKLOAD="data/workload/messenger.workload"
 WORKLOAD="data/workload/wikipedia.workload"
 WORKLOAD="data/workload/flash.workload"
+WORKLOAD="data/workload/variable.workload"
+WORKLOADS="data/workload/asplos.workload data/workload/flash.workload data/workload/variable.workload data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload"
 
 NETMETER_0=0.0
 NETMETER_WR=0.4
@@ -23,24 +26,26 @@ if [ $# -ge 1 ]; then
 fi
 
 if true; then
-	for ALWAYSON in "" "--alwayson"; do
-		for DELAY in "--delay" ""; do
-			for SOLAR in $SOLARMODES; do
-				for BATTERY in 0 32000 8000 16000 24000; do
-					# Wait for empty slots
-					if [ $NUMTHREADS -ge $MAXTHREADS ]; then
-						# We have filled all the threads, wait for them to finish
-						echo "`date`: Waiting for ${THREADS[@]}"
-						for THREADID in ${THREADS[@]}; do
-							wait $THREADID
-						done
-						NUMTHREADS=0
-					fi
-					# Run more simulations
-					bash simulator.sh --solar $SOLAR --battery $BATTERY --period $PERIOD --workload $WORKLOAD --net $NETMETER_WR $DELAY $ALWAYSON > /dev/null &
-					# Store the PID
-					THREADS[$NUMTHREADS]=$!
-					let NUMTHREADS=$NUMTHREADS+1
+	for WORKLOAD in $WORKLOADS; do
+		for ALWAYSON in "" "--alwayson"; do
+			for DELAY in "--delay" ""; do
+				for SOLAR in $SOLARMODES; do
+					for BATTERY in 0 32000 8000 16000 24000; do
+						# Wait for empty slots
+						if [ $NUMTHREADS -ge $MAXTHREADS ]; then
+							# We have filled all the threads, wait for them to finish
+							echo "`date`: Waiting for ${THREADS[@]}"
+							for THREADID in ${THREADS[@]}; do
+								wait $THREADID
+							done
+							NUMTHREADS=0
+						fi
+						# Run more simulations
+						bash simulator.sh --solar $SOLAR --battery $BATTERY --period $PERIOD --workload $WORKLOAD --net $NETMETER_WR $DELAY $ALWAYSON > /dev/null &
+						# Store the PID
+						THREADS[$NUMTHREADS]=$!
+						let NUMTHREADS=$NUMTHREADS+1
+					done
 				done
 			done
 		done

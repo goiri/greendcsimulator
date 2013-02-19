@@ -20,6 +20,7 @@ class SolverOptions:
 		# Load
 		self.prevLoad = 0.0
 		self.loadDelay = False
+		self.compression = 1.0
 		
 		# Net metering
 		self.netMeter = 0.0 # 0% of the grid price
