@@ -22,6 +22,7 @@ Simulator
 TODO list:
 * Battery lifetime model (75% parser)
 * On/off peak prices around the world are tricky. We dont have summar/winter pricings
+* Google workload
 TEST list:
 * Compression of the load when it is deferred
 * New proposal for peak power and energy accounting
@@ -84,7 +85,7 @@ class Simulator:
 		startdate = datetime(2013, 1, 1)
 		currentmonth = 1
 		# No previous load
-		prevload = 0.0
+		prevLoad = 0.0
 		# We start with full capacity
 		battery = self.infra.battery.capacity
 		# Battery
@@ -155,7 +156,7 @@ class Simulator:
 				sol = None
 			else:
 				# Update GreenSwitch policy parameters
-				solver.options.prevLoad = prevload
+				solver.options.prevLoad = prevLoad
 				solver.options.previousPeak = peakbrown
 				#solver.options.previousPeak = 0.95*peakbrown
 				#solver.options.previousPeak = 0.85*peakbrown
@@ -165,16 +166,23 @@ class Simulator:
 				# Check battery lowest capacity
 				if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap < (1.0-solver.options.batDischargeMax):
 					solver.options.batDischargeMax = 1.0 - solver.options.batIniCap/solver.options.batCap + 0.01
-				
-				# TODO Workload prediction
-				workloadPrediction = False
+				# Covering subset workload
+				reqNodes = self.workload.getLoad(time)*numServers
+				coveringPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff) + prevLoad
+				# All the covering subset running
+				if coveringPower > self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff):
+					coveringPower = self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff)
+				# All the covering subset idle
+				if coveringPower < self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff):
+					coveringPower = self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff)
+				solver.options.minSizeIni = coveringPower
 				
 				# Fill data with actual values and predictions
 				greenAvail = []
 				brownPrice = []
 				puePredi = []
 				worklPredi = []
-				for predhour in range(0, 24):
+				for predhour in range(0, SCHEDULING_WINDOW):
 					# Current values
 					if predhour == 0:
 						# Green available
@@ -189,7 +197,7 @@ class Simulator:
 						# Workload
 						reqNodes = self.workload.getLoad(time)*numServers
 						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
-						#coolingPower = self.infra.cooling.getPower(temperature)
+						#coolingPower = self.infra.cooling.getPower(temperature)						
 						w = loadPower #+ coolingPower
 						worklPredi.append(TimeValue(0, w))
 					# Predicted values
@@ -215,6 +223,7 @@ class Simulator:
 						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 						#coolingPower = self.infra.cooling.getPower(temperature)
 						w = loadPower #+ coolingPower
+						# TODO Workload prediction
 						#w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 				
@@ -272,17 +281,17 @@ class Simulator:
 					# Delayed load = Current workload - executed load
 					difference = (workload - execload)*(TIMESTEP/(60.0*60.0))
 					if difference >= 0.0:
-						prevload += difference
+						prevLoad += difference
 					else:
 						# Depending on the workload, we may compress the load when delaying
-						prevload += self.workload.compression*difference
-					if prevload < 0:
-						prevload = 0.0
+						prevLoad += self.workload.compression*difference
+					if prevLoad < 0:
+						prevLoad = 0.0
 				
 				# Fix solution to match the actual system (Parasol)
 				# Sometimes the solver says to run more than the load we have there
-				if execload > workload+prevload:
-					surplus = execload - (workload+prevload)
+				if execload > workload+prevLoad:
+					surplus = execload - (workload+prevLoad)
 					execload -= surplus
 					brownpower -= surplus
 					if brownpower < 0.0:
@@ -364,7 +373,7 @@ class Simulator:
 			
 			# Logging
 			if fout != None:
-				fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, execload*(pue-1.0), execload, prevload))
+				fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, execload*(pue-1.0), execload, prevLoad))
 				fout.flush()
 		
 		# Account for the last month

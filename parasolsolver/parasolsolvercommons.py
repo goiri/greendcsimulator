@@ -15,6 +15,7 @@ class SolverOptions:
 		#self.maxTime = 48 # hours
 		self.maxTime = 24 # hours
 		self.minSize = 0 # Watts (e.g., covering subset)
+		self.minSizeIni = 0 # Watts minimum for the first time slot
 		self.maxSize = 2500 # Watts
 		
 		# Load

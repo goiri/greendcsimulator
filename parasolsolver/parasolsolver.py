@@ -306,6 +306,8 @@ class ParasolModel:
 					sumLoadT = quicksum(Load[t] for t in range(0, t))
 					sumWorkloadT = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, t))
 					m.addConstr(sumLoadT <= sumWorkloadT, "WorkloadMin["+str(t)+"]") # +1 to have some margin
+			if self.options.minSizeIni != None:
+				m.addConstr(Load[0] >= self.options.minSizeIni, 'WorkloadMinInitial')
 		
 		# Load distribution
 		# s.t. LoadProvide {t in TIME} :   Load[t] =  LoadGreen[t] + LoadBatt[t];
