@@ -25,7 +25,7 @@ class Scenario:
 		self.workload = workload
 	
 	def __str__(self):
-		return str(self.netmeter) + '-' + str(self.period)  + '-' + str(self.workload)
+		return str(self.netmeter) + '-' + timeStr(self.period)  + '-' + str(self.workload)
 	
 	def __cmp__(self, other):
 		if self.workload == other.workload:
@@ -498,56 +498,59 @@ if __name__ == "__main__":
 	
 	print 'Generating summary...'
 	with open(LOG_PATH+'summary.html', 'w') as fout:
+		# Header
 		fout.write('<html>\n')
 		fout.write('<head>\n')
 		fout.write('<title>Green Datacenter Simulator results</title>\n')
 		fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
 		fout.write('</head>\n')
 		
-		# Print results
+		# Body: table header
 		fout.write('<body>\n')
 		fout.write('<table>\n')
 		fout.write('<thead>\n')
-		fout.write('<tr>\n')
-		fout.write('<th></th>\n')
-		fout.write('<th colspan="5"></th>\n')
-		fout.write('<th colspan="4"></th>\n')
-		#fout.write('<th colspan="5">Scenario</th>\n')
-		#fout.write('<th colspan="4">Setup</th>\n')
-		fout.write('<th colspan="9">Cost</th>\n')
-		fout.write('<th colspan="1">Lifetime</th>\n')
-		fout.write('<th colspan="2">Savings</th>\n')
-		fout.write('</tr>\n')
-		fout.write('<tr class="table_line">\n')
+		fout.write('  <tr>\n')
+		fout.write('    <th></th>\n')
+		fout.write('    <th colspan="5"></th>\n') #fout.write('<th colspan="5">Scenario</th>\n')
+		fout.write('    <th colspan="4"></th>\n') #fout.write('<th colspan="4">Setup</th>\n')
+		fout.write('    <th colspan="9">Cost</th>\n')
+		fout.write('    <th colspan="1">Lifetime</th>\n')
+		fout.write('    <th colspan="2">Savings</th>\n')
+		fout.write('  </tr>\n')
+		fout.write('  <tr class="table_line">\n')
 		# Setup
-		fout.write('<th></th>\n')
-		fout.write('<th width="70px">DC Size</th>\n')
-		fout.write('<th width="70px">Period</th>\n')
-		fout.write('<th width="80px">Location</th>\n')
-		fout.write('<th width="80px">Net meter</th>\n')
-		fout.write('<th width="80px">Workload</th>\n')
-		fout.write('<th width="70px">Solar</th>\n')
-		fout.write('<th width="70px">Battery</th>\n')
-		fout.write('<th width="70px">Delay</th>\n')
-		fout.write('<th width="70px">On/off</th>\n')
+		fout.write('    <th></th>\n')
+		fout.write('    <th width="70px">DC Size</th>\n')
+		fout.write('    <th width="70px">Period</th>\n')
+		fout.write('    <th width="80px">Location</th>\n')
+		fout.write('    <th width="80px">Net meter</th>\n')
+		fout.write('    <th width="80px">Workload</th>\n')
+		fout.write('    <th width="70px">Solar</th>\n')
+		fout.write('    <th width="70px">Battery</th>\n')
+		fout.write('    <th width="70px">Delay</th>\n')
+		fout.write('    <th width="70px">On/off</th>\n')
 		# Cost
-		fout.write('<th width="80px">Energy</th>\n')
-		fout.write('<th width="80px">Peak</th>\n')
-		fout.write('<th width="150px" colspan="2">OPEX</th>\n')
-		fout.write('<th width="80px">CAPEX</th>\n')
-		fout.write('<th width="150px" colspan="2">Total (1 year)</th>\n')
-		fout.write('<th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
+		fout.write('    <th width="80px">Energy</th>\n')
+		fout.write('    <th width="80px">Peak</th>\n')
+		fout.write('    <th width="150px" colspan="2">OPEX</th>\n')
+		fout.write('    <th width="80px">CAPEX</th>\n')
+		fout.write('    <th width="150px" colspan="2">Total (1 year)</th>\n')
+		fout.write('    <th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
 		# Lifetime
-		fout.write('<th width="80px">Battery</th>\n')
+		fout.write('    <th width="80px">Battery</th>\n')
 		# Saving
-		fout.write('<th width="80px">Yearly</th>\n')
-		fout.write('<th width="80px">Ammort</th>\n')
-		fout.write('</tr>\n')
+		fout.write('    <th width="80px">Yearly</th>\n')
+		fout.write('    <th width="80px">Ammort</th>\n')
+		fout.write('  </tr>\n')
 		fout.write('</thead>\n')
+		
+		# Body: table body
 		fout.write('<tbody>\n')
-		figure3d = {}
-		figure3dlocations = []
 		for scenario in sorted(results.keys()):
+			# Data for 3D figure
+			figure3d = {}
+			figure3dlocations = []
+			# Get data
 			try:
 				# Get baseline
 				basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[0]
@@ -650,7 +653,7 @@ if __name__ == "__main__":
 						fout.write('<td align="center"></td>\n')
 					else:
 						fout.write('<td align="right">%.1fy</td>\n' % ammortization)
-					# 3D Figure
+					# Data for 3D Figure
 					if setup.turnoff:
 						if setup.location not in figure3dlocations:
 							figure3dlocations.append(setup.location)
@@ -660,30 +663,39 @@ if __name__ == "__main__":
 					fout.write('<tr/>\n')
 			except Exception, e:
 				print 'Error:', e
+			
+			# Generate 3D Figure
+			if '--summary' not in sys.argv:
+				print 'Generating 3D data...', scenario
+				datafile = LOG_PATH+'3d-'+str(scenario)+'.data'
+				imgfile =  LOG_PATH+'3d-'+str(scenario)+'.svg'
+				#with open('3d.data', 'w') as f3ddata:
+				with open(datafile, 'w') as f3ddata:
+					f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
+					for solar, battery in sorted(figure3d):
+						aux = [99999999] * 2 * len(figure3dlocations)
+						for location in figure3dlocations:
+							if (False, location) in figure3d[solar, battery]:
+								aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
+							if (True, location) in figure3d[solar, battery]:
+								aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
+						out = '%11.1f\t%11.1f' % (solar, battery)
+						for i in range(0, len(figure3dlocations)):
+							out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
+						f3ddata.write(out+'\n')
+				call(['bash', '3dplot.sh', datafile, imgfile]) #call(['gnuplot', '3d.plot'])
+		# Finish table content
 		fout.write('</tbody>\n')
 		fout.write('</table>\n')
-		fout.write('<img src="3d.svg">\n')
+		# 3D figures
+		for scenario in sorted(results.keys()):
+			imgfile =  LOG_PATH+'3d-'+str(scenario)+'.svg'
+			fout.write('<img src="%s"><br/>\n' % (imgfile))
 		fout.write('</body>\n')
+		# Footer
 		fout.write('</html>\n')
 	
 	if '--summary' not in sys.argv:
-		# Generate 3D Figure
-		print 'Generating 3D data...'
-		with open('3d.data', 'w') as f3ddata:
-			f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
-			for solar, battery in sorted(figure3d):
-				aux = [99999999] * 2 * len(figure3dlocations)
-				for location in figure3dlocations:
-					if (False, location) in figure3d[solar, battery]:
-						aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
-					if (True, location) in figure3d[solar, battery]:
-						aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
-				out = '%11.1f\t%11.1f' % (solar, battery)
-				for i in range(0, len(figure3dlocations)):
-					out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
-				f3ddata.write(out+'\n')
-		call(['gnuplot', '3d.plot'])
-		
 		# Generate detailed page for experiment
 		print 'Generating details...'
 		total = 0
@@ -691,7 +703,7 @@ if __name__ == "__main__":
 			for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
 				saveDetails(scenario, setup, cost)
 				total += 1
-		
+	
 		# Generate figures
 		print 'Generating monthly figures...'
 		current = 0
