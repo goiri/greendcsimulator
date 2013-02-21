@@ -2,13 +2,19 @@
 
 PERIOD="1y"
 
+# Independent workloads
 WORKLOAD="data/workload/asplos.workload"
 WORKLOAD="data/workload/hotmail.workload"
 WORKLOAD="data/workload/messenger.workload"
 WORKLOAD="data/workload/wikipedia.workload"
 WORKLOAD="data/workload/flash.workload"
 WORKLOAD="data/workload/variable.workload"
-WORKLOADS="data/workload/asplos.workload data/workload/flash.workload data/workload/variable.workload data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload"
+# Workloads
+WORKLOADS="data/workload/asplos.workload data/workload/variable.workload data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload data/workload/flash.workload data/workload/search.workload data/workload/orkut.workload data/workload/mix.workload"
+WORKLOADS="data/workload/mix.workload"
+
+# Locations
+LOCATIONS="data/newark.location data/quito.location"
 
 NETMETER_0=0.0
 NETMETER_WR=0.4
@@ -26,8 +32,8 @@ if [ $# -ge 1 ]; then
 fi
 
 if true; then
-	for WORKLOAD in $WORKLOADS; do
-		for ALWAYSON in "" "--alwayson"; do
+	for ALWAYSON in "" "--alwayson"; do
+		for WORKLOAD in $WORKLOADS; do
 			for DELAY in "--delay" ""; do
 				for SOLAR in $SOLARMODES; do
 					for BATTERY in 0 32000 8000 16000 24000; do

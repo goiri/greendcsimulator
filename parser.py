@@ -57,19 +57,22 @@ class Setup:
 		self.progress = progress
 		
 	def __cmp__(self, other):
-		if self.location == other.location:
-			if self.turnoff == other.turnoff:
-				if self.deferrable == other.deferrable:
-					if self.battery == other.battery:
-						return self.solar - other.solar
-					else:
-						return self.battery - other.battery
-				else:
-					return self.deferrable - other.deferrable
-			else:
-				return self.turnoff - other.turnoff
+		if other == None:
+			return 1
 		else:
-			return cmp(self.location, other.location)
+			if self.location == other.location:
+				if self.turnoff == other.turnoff:
+					if self.deferrable == other.deferrable:
+						if self.battery == other.battery:
+							return self.solar - other.solar
+						else:
+							return self.battery - other.battery
+					else:
+						return self.deferrable - other.deferrable
+				else:
+					return self.turnoff - other.turnoff
+			else:
+				return cmp(self.location, other.location)
 
 """
 Defines the costs related with operating a datacenter.
@@ -256,78 +259,6 @@ def getEnergyStats(logfile):
 		print e
 
 """
-Save the details of an experiment with a datacenter with a given setup.
-"""
-def saveDetails(scenario, setup, cost):
-	with open(LOG_PATH+getFilename(scenario, setup)+".html", 'w') as fout:
-		# Header
-		fout.write('<html>\n')
-		fout.write('<head>\n')
-		fout.write('<title>Green Datacenter Simulator results</title>\n')
-		fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
-		fout.write('</head>\n')
-		fout.write('<body>\n')
-		
-		# Content
-		fout.write('<h1>Scenario</h1>\n')
-		fout.write('<ul>\n')
-		fout.write('<li>Period: %s</li>\n' % timeStr(scenario.period))
-		fout.write('<li>Net metering: %.1f%%</li>\n' % (scenario.netmeter*100.0))
-		fout.write('</ul>\n')
-		
-		fout.write('<h1>Setup</h1>\n')
-		fout.write('<ul>\n')
-		fout.write('<li>Location: %s</li>\n' % setup.location.replace('_', ' ').title())
-		fout.write('<li>IT: %s</li>\n' % powerStr(setup.itsize))
-		fout.write('<li>Solar: %s</li>\n' % powerStr(setup.solar))
-		fout.write('<li>Battery: %s</li>\n' % energyStr(setup.battery))
-		fout.write('</ul>\n')
-		
-		fout.write('<h1>Workload</h1>\n')
-		fout.write('<ul>\n')
-		fout.write('<li>Workload: %s</li>\n' % scenario.workload.title())
-		fout.write('<li>Turn on/off: %s</li>\n' % ('V' if setup.turnoff else '-'))
-		fout.write('<li>Deferrable: %s</li>\n' % ('V' if setup.deferrable else '-'))
-		fout.write('</ul>\n')
-		
-		fout.write('<h1>Cost</h1>\n')
-		fout.write('<ul>\n')
-		fout.write('<li>Brown energy: %s</li>\n' % costStr(cost.energy))
-		fout.write('<li>Brown peak power: %s</li>\n' % costStr(cost.peak))
-		fout.write('<li>OPEX: %s</li>\n' % costStr(cost.getOPEX()))
-		fout.write('<li>CAPEX: %s</li>\n' % costStr(cost.getCAPEX()))
-		fout.write('<li>Total: %s</li>\n' % costStr(cost.getTotal()))
-		fout.write('</ul>\n')
-		
-		fout.write('<h1>Battery</h1>\n')
-		#fout.write('<h1>Battery</h1>\n')
-		numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
-		fout.write('<ul>\n')
-		fout.write('<li>Number of discharges: %d</li>\n' % numdischarges)
-		if numdischarges>0:
-			fout.write('<li>Average discharge: %.1f%%</li>\n' % (totaldischarge/numdischarges))
-			fout.write('<li>Maximum discharge: %.1f%%</li>\n' % (maxdischarge))
-			fout.write('<li>Total discharge: %.1f%%</li>\n' % totaldischarge)
-			fout.write('<li>Lifetime: %.1f%% (%.1f years)</li>\n' % (lifetime, 100.0/lifetime))
-		fout.write('</ul>\n')
-		
-		fout.write('<h1>Log</h1>\n')
-		fout.write('<ul>\n')
-		fout.write('<li><a href="%s">Log file</a></li>\n' % (getFilename(scenario, setup)+'.log'))
-		fout.write('</ul>\n')
-		
-		# Figure for each month
-		fout.write('<h1>Graphics</h1>\n')
-		for i in range(1, 12+1):
-			fout.write('<h2>%s</h2>\n' % (datetime.date(2012, i, 1).strftime('%B')))
-			fout.write('<img src="%s"/><br/>\n' % ('img/'+getFilename(scenario, setup)+'-'+str(i)+'.png'))
-			fout.write('<img src="%s"/><br/>\n' % ('img/'+getFilename(scenario, setup)+'-'+str(i)+'-day.png'))
-		
-		# Footer
-		fout.write('</body>\n')
-		fout.write('<html>\n')
-
-"""
 Generate figures for a setup and scenario
 """
 def genFigures(filenamebase):
@@ -346,7 +277,7 @@ def genFigures(filenamebase):
 		if not os.path.isfile(datafile) or os.path.getmtime(datafile) < now - parseTime('6h'):
 			genPlotData(inputfile, datafile)
 			newDataFile = True
-		# Generate a figure for each month
+		# Generate a figure for each monthFb
 		for i in range(1, 12+1):
 			daystart = int(datetime.date(2012, i, 1).strftime('%j'))-1
 			if i < 12:
@@ -355,15 +286,19 @@ def genFigures(filenamebase):
 				dayend = int(datetime.date(2012, i, 31).strftime('%j'))
 			
 			# Generate figure for each month
-			auxoutfile = LOG_PATH+'img/'+filenamebase+'-'+str(i)+'.png'
-			if not os.path.isfile(auxoutfile) or os.path.getmtime(auxoutfile) < now - parseTime('6h') or os.path.getmtime(datafile) < now - parseTime('6h'):
-				p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % (daystart*24), '%d' % (dayend*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+			imgfile = LOG_PATH+'img/'+filenamebase+'/'+str(i)+'.png'
+			if not os.path.isdir(imgfile[:imgfile.rfind('/')]):
+				os.makedirs(imgfile[:imgfile.rfind('/')])
+			if not os.path.isfile(imgfile) or os.path.getmtime(imgfile) < now - parseTime('6h') or os.path.getmtime(datafile) < now - parseTime('6h'):
+				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '%d' % (daystart*24), '%d' % (dayend*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
 				processes.append(p)
 			
 			# Generate figure for a couple days in a month
-			auxoutfile = LOG_PATH+'img/'+filenamebase+'-'+str(i)+'-day.png'
-			if not os.path.isfile(auxoutfile) or os.path.getmtime(auxoutfile) < now - parseTime('6h') or os.path.getmtime(datafile) < now - parseTime('6h'):
-				p = Popen(['/bin/bash', 'plot.bash', datafile, auxoutfile, '%d' % ((daystart+15)*24), '%d' % ((daystart+18)*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+			imgfile = LOG_PATH+'img/'+filenamebase+'/'+str(i)+'-day.png'
+			if not os.path.isdir(imgfile[:imgfile.rfind('/')]):
+				os.makedirs(imgfile[:imgfile.rfind('/')])
+			if not os.path.isfile(imgfile) or os.path.getmtime(imgfile) < now - parseTime('6h') or os.path.getmtime(datafile) < now - parseTime('6h'):
+				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '%d' % ((daystart+15)*24), '%d' % ((daystart+18)*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
 				processes.append(p)
 			
 			# Wait until we only have 8 figures to go
@@ -386,6 +321,77 @@ Generate figures for a filename base
 """
 def generateFigures(scenario, setup):
 	genFigures(getFilename(scenario, setup))
+
+"""
+Save the details of an experiment with a datacenter with a given setup.
+"""
+def saveDetails(scenario, setup, cost):
+	with open(LOG_PATH+getFilename(scenario, setup)+".html", 'w') as fout:
+		# Header
+		fout.write('<html>\n')
+		fout.write('<head>\n')
+		fout.write('  <title>Green Datacenter Simulator results</title>\n')
+		fout.write('  <link rel="stylesheet" type="text/css" href="style.css"/>\n')
+		fout.write('</head>\n')
+		fout.write('<body>\n')
+		
+		# Content
+		fout.write('<h1>Scenario</h1>\n')
+		fout.write('<ul>\n')
+		fout.write('  <li>Period: %s</li>\n' % timeStr(scenario.period))
+		fout.write('  <li>Net metering: %.1f%%</li>\n' % (scenario.netmeter*100.0))
+		fout.write('</ul>\n')
+		
+		fout.write('<h1>Setup</h1>\n')
+		fout.write('<ul>\n')
+		fout.write('  <li>Location: %s</li>\n' % setup.location.replace('_', ' ').title())
+		fout.write('  <li>IT: %s</li>\n' % powerStr(setup.itsize))
+		fout.write('  <li>Solar: %s</li>\n' % powerStr(setup.solar))
+		fout.write('  <li>Battery: %s</li>\n' % energyStr(setup.battery))
+		fout.write('</ul>\n')
+		
+		fout.write('<h1>Workload</h1>\n')
+		fout.write('<ul>\n')
+		fout.write('  <li>Workload: %s</li>\n' % scenario.workload.title())
+		fout.write('  <li>Turn on/off: %s</li>\n' % ('V' if setup.turnoff else '-'))
+		fout.write('  <li>Deferrable: %s</li>\n' % ('V' if setup.deferrable else '-'))
+		fout.write('</ul>\n')
+		
+		fout.write('<h1>Cost</h1>\n')
+		fout.write('<ul>\n')
+		fout.write('  <li>Brown energy: %s</li>\n' % costStr(cost.energy))
+		fout.write('  <li>Brown peak power: %s</li>\n' % costStr(cost.peak))
+		fout.write('  <li>OPEX: %s</li>\n' % costStr(cost.getOPEX()))
+		fout.write('  <li>CAPEX: %s</li>\n' % costStr(cost.getCAPEX()))
+		fout.write('  <li>Total: %s</li>\n' % costStr(cost.getTotal()))
+		fout.write('</ul>\n')
+		
+		fout.write('<h1>Battery</h1>\n')
+		numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
+		fout.write('<ul>\n')
+		fout.write('  <li>Number of discharges: %d</li>\n' % numdischarges)
+		if numdischarges>0:
+			fout.write('  <li>Average discharge: %.1f%%</li>\n' % (totaldischarge/numdischarges))
+			fout.write('  <li>Maximum discharge: %.1f%%</li>\n' % (maxdischarge))
+			fout.write('  <li>Total discharge: %.1f%%</li>\n' % totaldischarge)
+			fout.write('  <li>Lifetime: %.1f%% (%.1f years)</li>\n' % (lifetime, 100.0/lifetime))
+		fout.write('</ul>\n')
+		
+		fout.write('<h1>Log</h1>\n')
+		fout.write('<ul>\n')
+		fout.write('  <li><a href="%s">Log file</a></li>\n' % (getFilename(scenario, setup)+'.log'))
+		fout.write('</ul>\n')
+		
+		# Figure for each month
+		fout.write('<h1>Graphics</h1>\n')
+		for i in range(1, 12+1):
+			fout.write('<h2>%s</h2>\n' % (datetime.date(2012, i, 1).strftime('%B')))
+			fout.write('<img src="%s"/><br/>\n' % ('img/'+getFilename(scenario, setup)+'/'+str(i)+'.png'))
+			fout.write('<img src="%s"/><br/>\n' % ('img/'+getFilename(scenario, setup)+'/'+str(i)+'-day.png'))
+		
+		# Footer
+		fout.write('</body>\n')
+		fout.write('</html>\n')
 
 """
 Draws an HTML bar chart
@@ -411,16 +417,139 @@ def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 	out += '</table>'
 	return out
 
-# Immutable
-#   Net metering
-#   Period
-#   Workload
+"""
+Write a table header for the experiments
+"""
+def writeExperimentHeader(fout):
+	# First row header
+	fout.write('  <tr>\n')
+	fout.write('    <th></th>\n')
+	fout.write('    <th colspan="5"></th>\n') #fout.write('<th colspan="5">Scenario</th>\n')
+	fout.write('    <th colspan="4"></th>\n') #fout.write('<th colspan="4">Setup</th>\n')
+	fout.write('    <th colspan="9">Cost</th>\n')
+	fout.write('    <th colspan="1">Lifetime</th>\n')
+	fout.write('    <th colspan="2">Savings</th>\n')
+	fout.write('  </tr>\n')
+	# Second row header
+	fout.write('  <tr>\n')
+	# Setup
+	fout.write('    <th></th>\n')
+	fout.write('    <th width="70px">DC Size</th>\n')
+	fout.write('    <th width="70px">Period</th>\n')
+	fout.write('    <th width="80px">Location</th>\n')
+	fout.write('    <th width="80px">Net meter</th>\n')
+	fout.write('    <th width="80px">Workload</th>\n')
+	fout.write('    <th width="70px">Solar</th>\n')
+	fout.write('    <th width="70px">Battery</th>\n')
+	fout.write('    <th width="70px">Delay</th>\n')
+	fout.write('    <th width="70px">On/off</th>\n')
+	# Cost
+	fout.write('    <th width="80px">Energy</th>\n')
+	fout.write('    <th width="80px">Peak</th>\n')
+	fout.write('    <th width="150px" colspan="2">OPEX</th>\n')
+	fout.write('    <th width="80px">CAPEX</th>\n')
+	fout.write('    <th width="150px" colspan="2">Total (1 year)</th>\n')
+	fout.write('    <th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
+	# Lifetime
+	fout.write('    <th width="80px">Battery</th>\n')
+	# Saving
+	fout.write('    <th width="80px">Yearly</th>\n')
+	fout.write('    <th width="80px">Ammort</th>\n')
+	fout.write('  </tr>\n')
+
+"""
+Write a line summarizing an experiment
+"""
+def writeExperimentLine(fout, scenario, setup, cost, batterylifetime, basesetup, basecost):
+	fout.write('<tr>\n')
+	# Experiment progress
+	experimentDescription = getBarChart([setup.progress, 100-setup.progress], 100, width=75, color=['green', '#C0C0C0'])
+	if cost.energy > 0.0 or cost.peak > 0.0 or cost.capex > 0.0:
+		experimentDescription = 'R'
+	if setup == basesetup:
+		experimentDescription = '<b>'+experimentDescription+'</b>'
+	fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (getFilename(scenario, setup)+'.html', experimentDescription))
+	# Setup
+	fout.write('<td align="center">%s</td>\n' % (powerStr(setup.itsize)))
+	fout.write('<td align="right">%s</td>\n' % (timeStr(scenario.period)))
+	fout.write('<td align="right">%s</td>\n' % (setup.location.replace('_', ' ').title()[0:10]))
+	fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
+	fout.write('<td align="right">%s</td>\n' % (scenario.workload.title()))
+	# Solar
+	if setup.solar == 0:
+		fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+	else:
+		fout.write('<td align="right">%s</td>\n' % powerStr(setup.solar))
+	# Battery
+	if setup.battery == 0:
+		fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+	else:
+		fout.write('<td align="right">%s</td>\n' % energyStr(setup.battery))
+	# Deferrable
+	fout.write('<td align="center">%s</td>\n' % ('<font color="green">&#10003;</font>' if setup.deferrable else '<font color="#999999">&#9747;</font>'))
+	# Turn on/off nodes
+	fout.write('<td align="center">%s</td>\n' % ('<font color="green">&#10003;</font>' if setup.turnoff else '<font color="#999999">&#9747;</font>'))
+	# Costs
+	fout.write('<td align="right">%s</td>\n' % costStr(cost.energy))
+	fout.write('<td align="right">%s</td>\n' % costStr(cost.peak))
+	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getOPEX()))
+	fout.write('<td>\n')
+	fout.write(getBarChart([cost.energy, cost.peak], 2.5*1000, width=100))
+	fout.write('</td>\n')
+	fout.write('<td align="right">%s</td>\n' % costStr(cost.getCAPEX()))
+	# Total cost
+	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getTotal()))
+	fout.write('<td>\n')
+	fout.write(getBarChart([cost.energy, cost.peak, cost.capex], 16*1000, width=150))
+	fout.write('</td>\n')
+	# Total in N years
+	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX()))
+	fout.write('<td>\n')
+	fout.write(getBarChart([cost.energy*TOTAL_YEARS, cost.peak*TOTAL_YEARS, cost.capex], 44*1000, width=150))
+	fout.write('</td>\n')
+	
+	# Calculate ammortization
+	# Saving compare to baseline
+	saveopexyear = basecost.getOPEX() - cost.getOPEX()
+	savecapex =  cost.getCAPEX() - basecost.getCAPEX()
+	ammortization = float(savecapex)/float(saveopexyear) if saveopexyear != 0.0 else 0.0
+	
+	# Lifetime battery
+	if batterylifetime != None:
+		batterylifetime = 100.0/lifetime
+		if saveopexyear < 0:
+			fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (batterylifetime))
+		elif batterylifetime >= ammortization:
+			if batterylifetime > 100:
+				fout.write('<td align="right" width="80px"><font color="#999999">No use</font></td>\n')
+			else:
+				fout.write('<td align="right" width="80px"><font color="green">%.1fy</font></td>\n' % (batterylifetime))
+		else:
+			fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (batterylifetime))
+	else:
+		fout.write('<td align="right" width="80px"><font color="#999999">&#9747;</font></td>\n')
+
+	# Costs
+	if saveopexyear < 0:
+		fout.write('<td align="right"><font color="#FF0000">%s</font></td>\n' % costStr(saveopexyear))
+	else:
+		fout.write('<td align="right">%s</td>\n' % costStr(saveopexyear))
+	# Amortization
+	if saveopexyear < 0:
+		fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
+	elif ammortization == 0:
+		fout.write('<td align="center"></td>\n')
+	elif ammortization < TOTAL_YEARS:
+		fout.write('<td align="right">%.1fy</td>\n' % ammortization)
+	else:
+		fout.write('<td align="right"><font color="#FF0000">%.1fy</font></td>\n' % ammortization)
+	fout.write('<tr/>\n')
+	
+	
 
 # Parsing
 if __name__ == "__main__":
-	#getEnergyStats('results/result-1830.0-32000-3200-23h30m-net0.40-asplos-NEWARK_INTERNATIONAL_ARPT.log')
-	
-	# Check files
+	# Collect results by checking all files in the log directory
 	print 'Collecting results...'
 	results = {}
 	for filename in sorted(os.listdir(LOG_PATH)):
@@ -455,7 +584,8 @@ if __name__ == "__main__":
 					greenswitch = False
 				else:
 					print 'Unknown value:', value
-			# Open file and read results
+			
+			# Open file to check progress or final results
 			costenergy = 0.0
 			costpeak = 0.0
 			costcapex = 0.0
@@ -488,14 +618,26 @@ if __name__ == "__main__":
 			except Exception, e:
 				print 'Cannot read file', LOG_PATH+filename, e
 			progress = 100.0*lastTime/period
-			# Store results
+			
+			# Create data structures
 			scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
-			cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex)
-			setup = Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch, progress=progress)
+			setup =    Setup(itsize=itsize, solar=solar, battery=battery, location=location, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch, progress=progress)
+			cost =     Cost(energy=costenergy, peak=costpeak, capex=costcapex)
+			
+			# Check battery lifetime
+			batterylifetime = None
+			if '--nobattery' not in sys.argv:
+				numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
+				if lifetime > 0:
+					batterylifetime = 100.0/lifetime
+			
+			# Store results
 			if scenario not in results:
 				results[scenario] = []
-			results[scenario].append((setup, cost))
+			results[scenario].append((setup, cost, batterylifetime))
 	
+	# Main Summary
+	# ============================================================
 	print 'Generating summary...'
 	with open(LOG_PATH+'summary.html', 'w') as fout:
 		# Header
@@ -504,215 +646,328 @@ if __name__ == "__main__":
 		fout.write('<title>Green Datacenter Simulator results</title>\n')
 		fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
 		fout.write('</head>\n')
-		
-		# Body: table header
 		fout.write('<body>\n')
+		
+		fout.write('<h1>Workloads</h1>\n')
 		fout.write('<table>\n')
 		fout.write('<thead>\n')
-		fout.write('  <tr>\n')
-		fout.write('    <th></th>\n')
-		fout.write('    <th colspan="5"></th>\n') #fout.write('<th colspan="5">Scenario</th>\n')
-		fout.write('    <th colspan="4"></th>\n') #fout.write('<th colspan="4">Setup</th>\n')
-		fout.write('    <th colspan="9">Cost</th>\n')
-		fout.write('    <th colspan="1">Lifetime</th>\n')
-		fout.write('    <th colspan="2">Savings</th>\n')
-		fout.write('  </tr>\n')
-		fout.write('  <tr class="table_line">\n')
-		# Setup
-		fout.write('    <th></th>\n')
-		fout.write('    <th width="70px">DC Size</th>\n')
-		fout.write('    <th width="70px">Period</th>\n')
-		fout.write('    <th width="80px">Location</th>\n')
-		fout.write('    <th width="80px">Net meter</th>\n')
-		fout.write('    <th width="80px">Workload</th>\n')
-		fout.write('    <th width="70px">Solar</th>\n')
-		fout.write('    <th width="70px">Battery</th>\n')
-		fout.write('    <th width="70px">Delay</th>\n')
-		fout.write('    <th width="70px">On/off</th>\n')
-		# Cost
-		fout.write('    <th width="80px">Energy</th>\n')
-		fout.write('    <th width="80px">Peak</th>\n')
-		fout.write('    <th width="150px" colspan="2">OPEX</th>\n')
-		fout.write('    <th width="80px">CAPEX</th>\n')
-		fout.write('    <th width="150px" colspan="2">Total (1 year)</th>\n')
-		fout.write('    <th width="150px" colspan="2">Total (%d years)</th>\n' % TOTAL_YEARS)
-		# Lifetime
-		fout.write('    <th width="80px">Battery</th>\n')
-		# Saving
-		fout.write('    <th width="80px">Yearly</th>\n')
-		fout.write('    <th width="80px">Ammort</th>\n')
-		fout.write('  </tr>\n')
+		fout.write('<tr>\n')
+		fout.write('  <th colspan="3"></th>\n')
+		fout.write('  <th colspan="6">Non-deferrable</th>\n')
+		fout.write('  <th colspan="6">Deferrable</th>\n')
+		fout.write('</tr>\n')
+		fout.write('<tr>\n')
+		fout.write('  <th></th>\n')
+		fout.write('  <th colspan="2">Base cost</th>\n')
+		fout.write('  <th width="160px" colspan="2">Best cost</th>\n')
+		fout.write('  <th width="160px" colspan="2">Solar</th>\n')
+		fout.write('  <th width="160px" colspan="2">Battery</th>\n')
+		fout.write('  <th width="160px" colspan="2">Best cost</th>\n')
+		fout.write('  <th width="160px" colspan="2">Solar</th>\n')
+		fout.write('  <th width="160px" colspan="2">Battery</th>\n')
+		fout.write('</tr>\n')
 		fout.write('</thead>\n')
-		
-		# Body: table body
 		fout.write('<tbody>\n')
 		for scenario in sorted(results.keys()):
-			# Data for 3D figure
-			figure3d = {}
-			figure3dlocations = []
+			# Get experiment baseline
+			basesetup, basecost, basebatterylifetime = sorted(results[scenario], key=itemgetter(0))[0]
+			for setup, cost, batterylifetime in results[scenario]:
+				if setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
+					basesetup = setup
+					basecost = cost
+					#if setup.location=='NEWARK_INTERNATIONAL_ARPT':
+					break
+			# Get experiment best result
+			# Print experiment
+			fout.write('<tr>\n')
+			fout.write('  <td><a href="summary-%s.html">%s</a></td>\n' % (scenario.workload, scenario.workload.title()))
+			# Base
+			fout.write('  <td>%s</td>\n' % costStr(basecost.getOPEX()*TOTAL_YEARS + basecost.getCAPEX()))
+			fout.write('  <td>' + getBarChart([basecost.energy*TOTAL_YEARS, basecost.peak*TOTAL_YEARS, basecost.capex], 24*1000)+'</td>\n')
+			
+			# Best non deferrable
+			bestsetup, bestcost, bestbatterylifetime = basesetup, basecost, basebatterylifetime
+			for setup, cost, batterylifetime in results[scenario]:
+				if cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX() < bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX():
+					if not setup.deferrable:
+						bestsetup = setup
+						bestcost = cost
+			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (getFilename(scenario, bestsetup), costStr(bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX())))
+			fout.write('  <td>' + getBarChart([bestcost.energy*TOTAL_YEARS, bestcost.peak*TOTAL_YEARS, bestcost.capex], 24*1000)+'</td>\n')
+			fout.write('  <td align="right">%s</td>\n' % powerStr(bestsetup.solar))
+			fout.write('  <td>' + getBarChart([bestsetup.solar], 4.8*1000, color='green')+'</td>\n')
+			fout.write('  <td align="right">%s</td>\n' % energyStr(bestsetup.battery))
+			fout.write('  <td>' + getBarChart([bestsetup.battery], 32*1000, color='yellow')+'</td>\n')
+			# Best non-deferrable
+			bestsetup, bestcost, bestbatterylifetime = basesetup, basecost, basebatterylifetime
+			for setup, cost, batterylifetime in results[scenario]:
+				if cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX() < bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX():
+					if setup.deferrable:
+						bestsetup = setup
+						bestcost = cost
+			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (getFilename(scenario, bestsetup), costStr(bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX())))
+			fout.write('  <td>' + getBarChart([bestcost.energy*TOTAL_YEARS, bestcost.peak*TOTAL_YEARS, bestcost.capex], 24*1000)+'</td>\n')
+			fout.write('  <td align="right">%s</td>\n' % powerStr(bestsetup.solar))
+			fout.write('  <td>' + getBarChart([bestsetup.solar], 4.8*1000, color='green')+'</td>\n')
+			fout.write('  <td align="right">%s</td>\n' % energyStr(bestsetup.battery))
+			fout.write('  <td>' + getBarChart([bestsetup.battery], 32*1000, color='yellow')+'</td>\n')
+			fout.write('</tr>\n')
+		fout.write('</tbody>\n')
+		fout.write('</table>\n')
+		
+		# Add 3D figures to the summary page
+		i=0
+		fout.write('<table>\n')
+		fout.write('<tr>\n')
+		for scenario in sorted(results.keys()):
+			fout.write('<td>\n')
+			fout.write('<h2>%s</h2>\n' % scenario.workload.title())
+			imgfile =  '3d-'+str(scenario)+'.svg'
+			fout.write('<a href="summary-%s.html"><img src="%s" width="400px"></a>\n' % (scenario.workload, imgfile))
+			fout.write('</td>\n')
+			i+=1
+			if i%4 == 0:
+				fout.write('<tr>\n')
+				fout.write('</tr>\n')
+		fout.write('</tr>\n')
+		fout.write('</table>\n')
+		
+		fout.write('<h1>Locations</h1>\n')
+		locations = []
+		for scenario in sorted(results.keys()):
+			for setup, cost, batterylifetime in results[scenario]:
+				if setup.location not in locations:
+					locations.append(setup.location)
+		for location in locations:
+			fout.write('<h2>%s</h2>\n' % location.replace('_', ' ').title())
+			fout.write('<table>\n')
+			fout.write('<thead>\n')
+			fout.write('<tr>\n')
+			fout.write('  <th colspan="3"></th>\n')
+			fout.write('  <th colspan="6">Non-deferrable</th>\n')
+			fout.write('  <th colspan="6">Deferrable</th>\n')
+			fout.write('</tr>\n')
+			fout.write('<tr>\n')
+			fout.write('  <th></th>\n')
+			fout.write('  <th colspan="2">Base cost</th>\n')
+			fout.write('  <th width="160px" colspan="2">Best cost</th>\n')
+			fout.write('  <th width="160px" colspan="2">Solar</th>\n')
+			fout.write('  <th width="160px" colspan="2">Battery</th>\n')
+			fout.write('  <th width="160px" colspan="2">Best cost</th>\n')
+			fout.write('  <th width="160px" colspan="2">Solar</th>\n')
+			fout.write('  <th width="160px" colspan="2">Battery</th>\n')
+			fout.write('</tr>\n')
+			fout.write('</thead>\n')
+			fout.write('<tbody>\n')
+			for scenario in sorted(results.keys()):
+				# Get experiment baseline
+				basesetup, basecost, basebatterylifetime = None, None, None
+				for setup, cost, batterylifetime in results[scenario]:
+					if setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True and setup.location==location:
+						basesetup = setup
+						basecost = cost
+						break
+				if basesetup != None:
+					# Print experiment
+					fout.write('<tr>\n')
+					fout.write('  <td><a href="summary-%s.html">%s</a></td>\n' % (scenario.workload, scenario.workload.title()))
+					# Base
+					fout.write('  <td>%s</td>\n' % costStr(basecost.getOPEX()*TOTAL_YEARS + basecost.getCAPEX()))
+					fout.write('  <td>' + getBarChart([basecost.energy*TOTAL_YEARS, basecost.peak*TOTAL_YEARS, basecost.capex], 24*1000)+'</td>\n')
+					# Best non deferrable
+					bestsetup, bestcost, bestbatterylifetime = basesetup, basecost, basebatterylifetime
+					for setup, cost, batterylifetime in results[scenario]:
+						if cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX() < bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX():
+							if not setup.deferrable and setup.location==location:
+								bestsetup = setup
+								bestcost = cost
+					fout.write('  <td><a href="%s.html">%s</a></td>\n' % (getFilename(scenario, bestsetup), costStr(bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX())))
+					fout.write('  <td>' + getBarChart([bestcost.energy*TOTAL_YEARS, bestcost.peak*TOTAL_YEARS, bestcost.capex], 24*1000)+'</td>\n')
+					fout.write('  <td align="right">%s</td>\n' % powerStr(bestsetup.solar))
+					fout.write('  <td>' + getBarChart([bestsetup.solar], 4.8*1000, color='green')+'</td>\n')
+					fout.write('  <td align="right">%s</td>\n' % energyStr(bestsetup.battery))
+					fout.write('  <td>' + getBarChart([bestsetup.battery], 32*1000, color='yellow')+'</td>\n')
+					# Best non-deferrable
+					bestsetup, bestcost, bestbatterylifetime = basesetup, basecost, basebatterylifetime
+					for setup, cost, batterylifetime in results[scenario]:
+						if cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX() < bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX():
+							if setup.deferrable and setup.location==location:
+								bestsetup = setup
+								bestcost = cost
+					fout.write('  <td><a href="%s.html">%s</a></td>\n' % (getFilename(scenario, bestsetup), costStr(bestcost.getOPEX()*TOTAL_YEARS + bestcost.getCAPEX())))
+					fout.write('  <td>' + getBarChart([bestcost.energy*TOTAL_YEARS, bestcost.peak*TOTAL_YEARS, bestcost.capex], 24*1000)+'</td>\n')
+					fout.write('  <td align="right">%s</td>\n' % powerStr(bestsetup.solar))
+					fout.write('  <td>' + getBarChart([bestsetup.solar], 4.8*1000, color='green')+'</td>\n')
+					fout.write('  <td align="right">%s</td>\n' % energyStr(bestsetup.battery))
+					fout.write('  <td>' + getBarChart([bestsetup.battery], 32*1000, color='yellow')+'</td>\n')
+					fout.write('</tr>\n')
+			fout.write('</tbody>\n')
+			fout.write('</table>\n')
+		
+		
+		fout.write('<h1>All experiments</h1>\n')
+		fout.write('<a href="summary-experiments.html">All experiments</a>\n')
+		
+		
+		# Footer
+		fout.write('</body>\n')
+		fout.write('</html>\n')
+	
+	# All experiments
+	# ============================================================
+	print 'Generating all experiments summary...'
+	with open(LOG_PATH+'summary-experiments.html', 'w') as fout:
+		# Header
+		fout.write('<html>\n')
+		fout.write('<head>\n')
+		fout.write('<title>Green Datacenter Simulator results</title>\n')
+		fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
+		fout.write('</head>\n')
+		fout.write('<body>\n')
+		
+		# All experiments
+		fout.write('<h1>All experiments</h1>\n')
+		# Table header
+		fout.write('<table>\n')
+		fout.write('<thead>\n')
+		writeExperimentHeader(fout)
+		fout.write('</thead>\n')
+		# Table body
+		fout.write('<tbody>\n')
+		for scenario in sorted(results.keys()):
 			# Get data
 			try:
-				# Get baseline
-				basesetup, basecost = sorted(results[scenario], key=itemgetter(0))[0]
-				for setup, cost in results[scenario]:
+				# Get experiment baseline
+				basesetup, basecost, basebatterylifetime = sorted(results[scenario], key=itemgetter(0))[0]
+				for setup, cost, batterylifetime in results[scenario]:
+					if setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
+						basesetup = setup
+						basecost = cost
+						if setup.location=='NEWARK_INTERNATIONAL_ARPT':
+							break
+				
+				# Draw result in a row
+				for setup, cost, batterylifetime in sorted(results[scenario], key=itemgetter(0)):
+					writeExperimentLine(fout, scenario, setup, cost, batterylifetime, basesetup, basecost)
+			except Exception, e:
+				print 'Error:', e
+		# Finish table content
+		fout.write('</tbody>\n')
+		fout.write('</table>\n')
+		# Footer
+		fout.write('</body>\n')
+		fout.write('</html>\n')
+	
+	# Scenario details
+	# ============================================================
+	print 'Generating scenario details...'
+	for scenario in sorted(results.keys()):
+		with open(LOG_PATH+'summary-%s.html' % scenario.workload, 'w') as fout:
+			# Header
+			fout.write('<html>\n')
+			fout.write('<head>\n')
+			fout.write('<title>%s</title>\n' % (scenario.workload.title()))
+			fout.write('<link rel="stylesheet" type="text/css" href="style.css"/>\n')
+			fout.write('</head>\n')
+			fout.write('<body>\n')
+			
+			fout.write('<h1>%s</h1>\n' % scenario.workload.title())
+			# 3D Figure
+			imgfile =  ''
+			fout.write('<img width="800px" src="3d-'+str(scenario)+'.svg">\n')
+			fout.write('<img width="800px"src="3d-'+str(scenario)+'-base.svg">\n')
+			
+			# All experiments
+			fout.write('<table>\n')
+			fout.write('<thead>\n')
+			writeExperimentHeader(fout)
+			fout.write('</thead>\n')
+			fout.write('<tbody>\n')
+			# Write data
+			try:
+				# Get experiment baseline
+				basesetup, basecost, basebatterylifetime = sorted(results[scenario], key=itemgetter(0))[0]
+				for setup, cost, batterylifetime in results[scenario]:
 					#if setup.location=='NEWARK_INTERNATIONAL_ARPT' and 
 					if setup.solar==0 and setup.battery==0 and setup.deferrable==False and setup.turnoff==True:
 						basesetup = setup
 						basecost = cost
 						if setup.location=='NEWARK_INTERNATIONAL_ARPT':
 							break
-				# Show result
-				for setup, cost in sorted(results[scenario], key=itemgetter(0)): #, cmp=cmpsetup
-					fout.write('<tr>\n')
-					# Experiment progress
-					#experimentDescription = '%.1f%%' % setup.progress
-					experimentDescription = getBarChart([setup.progress, 100-setup.progress], 100, width=75, color=['green', '#C0C0C0'])
-					if cost.energy > 0.0 or cost.peak > 0.0 or cost.capex > 0.0:
-						experimentDescription = 'R'
-					if setup == basesetup:
-						experimentDescription = '<b>'+experimentDescription+'</b>'
-					fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (getFilename(scenario, setup)+'.html', experimentDescription))
-					# Setup
-					fout.write('<td align="center">%s</td>\n' % (powerStr(setup.itsize)))
-					fout.write('<td align="right">%s</td>\n' % (timeStr(scenario.period)))
-					fout.write('<td align="right">%s</td>\n' % (setup.location.replace('_', ' ').title()[0:10]))
-					fout.write('<td align="right">%.1f%%</td>\n' % (scenario.netmeter*100.0))
-					fout.write('<td align="right">%s</td>\n' % (scenario.workload.title()))
-					# Solar
-					if setup.solar == 0:
-						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-					else:
-						fout.write('<td align="right">%s</td>\n' % powerStr(setup.solar))
-					# Battery
-					if setup.battery == 0:
-						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-					else:
-						fout.write('<td align="right">%s</td>\n' % energyStr(setup.battery))
-					# Deferrable
-					if setup.deferrable:
-						fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
-					else:
-						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-					# Turn on/off nodes
-					if setup.turnoff:
-						fout.write('<td align="center"><font color="green">&#10003;</font></td>\n')
-					else:
-						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-					# Costs
-					fout.write('<td align="right">%s</td>\n' % costStr(cost.energy))
-					fout.write('<td align="right">%s</td>\n' % costStr(cost.peak))
-					fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getOPEX()))
-					fout.write('<td>\n')
-					fout.write(getBarChart([cost.energy, cost.peak], 2.5*1000, width=100))
-					fout.write('</td>\n')
-					fout.write('<td align="right">%s</td>\n' % costStr(cost.getCAPEX()))
-					# Total cost
-					fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getTotal()))
-					fout.write('<td>\n')
-					fout.write(getBarChart([cost.energy, cost.peak, cost.capex], 16*1000, width=150))
-					fout.write('</td>\n')
-					# Total in N years
-					fout.write('<td align="right" width="80px">%s</td>\n' % costStr(cost.getOPEX()*TOTAL_YEARS + cost.getCAPEX()))
-					fout.write('<td>\n')
-					fout.write(getBarChart([cost.energy*TOTAL_YEARS, cost.peak*TOTAL_YEARS, cost.capex], 44*1000, width=150))
-					fout.write('</td>\n')
-					
-					# Calculate ammortization
-					# Saving compare to baseline
-					saveopexyear = basecost.getOPEX() - cost.getOPEX()
-					savecapex =  cost.getCAPEX() - basecost.getCAPEX()
-					ammortization = float(savecapex)/float(saveopexyear) if saveopexyear != 0.0 else 0.0
-					
-					# Lifetime battery
-					if '--nobattery' in sys.argv:
-						lifetime = 0
-					else:
-						numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+getFilename(scenario, setup)+'.log')
-					if lifetime > 0:
-						batterylifetime = 100.0/lifetime
-						if saveopexyear < 0:
-							fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (batterylifetime))
-						elif batterylifetime >= ammortization:
-							if batterylifetime > 100:
-								fout.write('<td align="right" width="80px"><font color="#999999">No use</font></td>\n')
-							else:
-								fout.write('<td align="right" width="80px"><font color="green">%.1fy</font></td>\n' % (batterylifetime))
-						else:
-							fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (batterylifetime))
-					else:
-						fout.write('<td align="right" width="80px"><font color="#999999">&#9747;</font></td>\n')
-			
-					# Costs
-					if saveopexyear < 0:
-						fout.write('<td align="right"><font color="#FF0000">%s</font></td>\n' % costStr(saveopexyear))
-					else:
-						fout.write('<td align="right">%s</td>\n' % costStr(saveopexyear))
-					if saveopexyear < 0:
-						fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-					elif ammortization == 0:
-						fout.write('<td align="center"></td>\n')
-					else:
-						fout.write('<td align="right">%.1fy</td>\n' % ammortization)
-					# Data for 3D Figure
-					if setup.turnoff:
-						if setup.location not in figure3dlocations:
-							figure3dlocations.append(setup.location)
-						if (setup.solar, setup.battery) not in figure3d:
-							figure3d[setup.solar, setup.battery] = {}
-						figure3d[setup.solar, setup.battery][setup.deferrable, setup.location] = cost.energy*TOTAL_YEARS + cost.peak*TOTAL_YEARS + cost.capex
-					fout.write('<tr/>\n')
+				
+				# Draw result in a row
+				for setup, cost, batterylifetime in sorted(results[scenario], key=itemgetter(0)):
+					writeExperimentLine(fout, scenario, setup, cost, batterylifetime, basesetup, basecost)
 			except Exception, e:
 				print 'Error:', e
-			
-			# Generate 3D Figure
-			if '--summary' not in sys.argv:
-				print 'Generating 3D data...', scenario
-				datafile = LOG_PATH+'3d-'+str(scenario)+'.data'
-				imgfile =  LOG_PATH+'3d-'+str(scenario)+'.svg'
-				#with open('3d.data', 'w') as f3ddata:
-				with open(datafile, 'w') as f3ddata:
-					f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
-					for solar, battery in sorted(figure3d):
-						aux = [99999999] * 2 * len(figure3dlocations)
-						for location in figure3dlocations:
-							if (False, location) in figure3d[solar, battery]:
-								aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
-							if (True, location) in figure3d[solar, battery]:
-								aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
-						out = '%11.1f\t%11.1f' % (solar, battery)
-						for i in range(0, len(figure3dlocations)):
-							out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
-						f3ddata.write(out+'\n')
-				call(['bash', '3dplot.sh', datafile, imgfile]) #call(['gnuplot', '3d.plot'])
-		# Finish table content
-		fout.write('</tbody>\n')
-		fout.write('</table>\n')
-		# 3D figures
-		for scenario in sorted(results.keys()):
-			imgfile =  LOG_PATH+'3d-'+str(scenario)+'.svg'
-			fout.write('<img src="%s"><br/>\n' % (imgfile))
-		fout.write('</body>\n')
-		# Footer
-		fout.write('</html>\n')
+			# Finish table content
+			fout.write('</tbody>\n')
+			fout.write('</table>\n')
+			# Footer
+			fout.write('</body>\n')
+			fout.write('</html>\n')
 	
+	# 3D Figures
+	# ============================================================
+	if '--summary' not in sys.argv:
+		print 'Generating 3D figures...'
+		for scenario in sorted(results.keys()):
+			# Data for 3D figure
+			figure3d = {}
+			figure3dlocations = []
+			
+			# Data for 3D Figure
+			for setup, cost, batterylifetime in sorted(results[scenario], key=itemgetter(0)):
+				if setup.turnoff:
+					if setup.location not in figure3dlocations:
+						figure3dlocations.append(setup.location)
+					if (setup.solar, setup.battery) not in figure3d:
+						figure3d[setup.solar, setup.battery] = {}
+					figure3d[setup.solar, setup.battery][setup.deferrable, setup.location] = cost.energy*TOTAL_YEARS + cost.peak*TOTAL_YEARS + cost.capex
+			
+			# Generate each one of the 3D figures
+			datafile =     LOG_PATH+'3d-'+str(scenario)+'.data'
+			imgfile =      LOG_PATH+'3d-'+str(scenario)+'.svg'
+			imgfilebase =  LOG_PATH+'3d-'+str(scenario)+'-base.svg'
+			#with open('3d.data', 'w') as f3ddata:
+			with open(datafile, 'w') as f3ddata:
+				f3ddata.write('# '+' '.join(figure3dlocations)+'\n')
+				for solar, battery in sorted(figure3d):
+					aux = [99999999] * 2 * len(figure3dlocations)
+					for location in figure3dlocations:
+						if (False, location) in figure3d[solar, battery]:
+							aux[figure3dlocations.index(location)*2+0] = figure3d[solar, battery][False, location]
+						if (True, location) in figure3d[solar, battery]:
+							aux[figure3dlocations.index(location)*2+1] = figure3d[solar, battery][True, location]
+					out = '%11.1f\t%11.1f' % (solar, battery)
+					for i in range(0, len(figure3dlocations)):
+						out += '\t%11.2f\t%11.2f' % (aux[i*2+0], aux[i*2+1])
+					f3ddata.write(out+'\n')
+			call(['bash', '3dplot.sh', datafile, imgfile])
+			call(['bash', '3dplot.sh', datafile, imgfilebase, '1'])
+	
+	# Experiments details
+	# ============================================================
 	if '--summary' not in sys.argv:
 		# Generate detailed page for experiment
 		print 'Generating details...'
 		total = 0
 		for scenario in sorted(results.keys()):
-			for setup, cost in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
+			for setup, cost, batterylifetime in sorted(results[scenario], key=itemgetter(0)): # , cmp=cmpsetup
 				saveDetails(scenario, setup, cost)
 				total += 1
 	
+	# Figures
+	# ============================================================
+	if '--summary' not in sys.argv:
 		# Generate figures
 		print 'Generating monthly figures...'
 		current = 0
 		last = datetime.datetime.now()
 		for scenario in sorted(results.keys(), reverse=False):
-			for setup, cost in sorted(results[scenario], key=itemgetter(0), reverse=False): # , cmp=cmpsetup
+			for setup, cost, batterylifetime in sorted(results[scenario], key=itemgetter(0), reverse=False): # , cmp=cmpsetup
 				generateFigures(scenario, setup)
 				current+=1
-				if datetime.datetime.now()-last > datetime.timedelta(seconds=10):
+				if datetime.datetime.now()-last > datetime.timedelta(seconds=30):
 					print '%.1f%%' % (100.0*current/total)
 					last = datetime.datetime.now()
-	

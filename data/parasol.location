@@ -27,6 +27,5 @@ brown.netmetering = 0.4 # 40%
 
 # Temperature
 #temperature = data/parasol.temperature
-#temperature = /net/wonko/home/jlberral/solarpower/test391-full/14-pue.data,ASWAN
 #temperature = data/locations.data,NEWARK_INTERNATIONAL_ARPT,-215d4h
 temperature = data/newark.temperature,NEWARK_INTERNATIONAL_ARPT
