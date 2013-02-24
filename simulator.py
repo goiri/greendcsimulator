@@ -59,6 +59,9 @@ class Simulator:
 		# Location
 		if self.location.name != None:
 			filename += '-%s' % self.location.name
+		# Cooling
+		if self.infra.cooling.coolingtype != None:
+			filename += '-cool'+self.infra.cooling.coolingtype
 		# Delay
 		if self.workload.deferrable == True:
 			filename += '-delay'
@@ -86,6 +89,7 @@ class Simulator:
 		currentmonth = 1
 		# No previous load
 		prevLoad = 0.0
+		prevNodes = 0.0
 		# We start with full capacity
 		battery = self.infra.battery.capacity
 		# Battery
@@ -122,8 +126,13 @@ class Simulator:
 		solver.options.loadDelay = self.workload.deferrable
 		# TODO
 		solver.options.compression = self.workload.compression
+		'''
+		if solver.options.loadDelay:
+			solver.options.minSize = self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff)
+		else:
+			solver.options.minSize = self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff)
+		'''
 		solver.options.minSize = self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff)
-		#solver.options.minSize = self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff)
 		solver.options.maxSize = self.infra.it.getMaxPower()
 		# Power infrastructure costs
 		solver.options.netMeter = self.location.netmetering
@@ -168,7 +177,7 @@ class Simulator:
 					solver.options.batDischargeMax = 1.0 - solver.options.batIniCap/solver.options.batCap + 0.01
 				# Covering subset workload
 				reqNodes = self.workload.getLoad(time)*numServers
-				coveringPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff) + prevLoad
+				coveringPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff) + prevLoad/solver.options.compression
 				# All the covering subset running
 				if coveringPower > self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff):
 					coveringPower = self.infra.it.getPower(self.workload.minimum, minimum=self.workload.minimum, turnoff=self.turnoff)
@@ -240,13 +249,19 @@ class Simulator:
 				temperature = self.location.getTemperature(time)
 				#coolingPower = self.infra.cooling.getPower(temperature)
 				pue = self.infra.cooling.getPUE(temperature)
-				# Default behavior
-				#brownpower = loadPower + coolingPower - greenpower
+				# Use brown
 				brownpower = workload*pue - greenpower
 				netpower = 0.0
 				if brownpower < 0.0:
 					netpower = -1.0*brownpower
 					brownpower = 0.0
+				# Use batteries if we can
+				batdischarge = 0.0
+				batcharge = 0.0
+				if brownpower > 0.0:
+					if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap > (1.0-solver.options.batDischargeMax):
+						batdischarge += brownpower
+						brownpower = 0.0
 				# Load
 				execload = workload
 				# State
@@ -261,11 +276,11 @@ class Simulator:
 				workload = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 				# Cooling
 				temperature = self.location.getTemperature(time)
-				#coolingPower = self.infra.cooling.getPower(temperature)
 				pue = self.infra.cooling.getPUE(temperature)
+				#coolingPower = self.infra.cooling.getPower(temperature)
 				# Get solution from solver
-				#execload = round(sol['Load[0]'], 4)
 				execload = sol['Load[0]']
+				#execload = round(sol['Load[0]'], 4)
 				#execload = round((sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'])/pue, 4)
 				
 				# Calculate brown power and net metering
@@ -284,7 +299,7 @@ class Simulator:
 						prevLoad += difference
 					else:
 						# Depending on the workload, we may compress the load when delaying
-						prevLoad += self.workload.compression*difference
+						prevLoad += difference*self.workload.compression
 					if prevLoad < 0:
 						prevLoad = 0.0
 				
@@ -309,35 +324,38 @@ class Simulator:
 					netpower = 0.0
 				# If we are using less than what the solver gave us, adjust it
 				inPower = greenpower + brownpower + batdischarge
-				outPower = execload + netpower + batcharge
+				outPower = execload*pue + netpower + batcharge
 				if abs(inPower-outPower) > 1.0:
 					print timeStr(time), 'We have a disadjustment'
 					print '  IN:  %.1fW' % (greenpower + brownpower + batdischarge)
-					print '  OUT: %.1fW' % (execload + netpower + batcharge)
+					print '  OUT: %.1fW' % (execload*pue + netpower + batcharge)
 					print '  Green: %.1fW' % greenpower
 					print '  Brown: %.1fW' % brownpower
 					print '  BDisc: %.1fW' % batdischarge
 					print '  ='
 					print '  NetMe: %.1fW' % netpower
 					print '  BChar: %.1fW' % batcharge
-					print '  Load:  %.1fW' % execload
+					print '  Load:  %.1fW = %.1fW*%.2f' % (execload*pue, execload, pue)
 					if brownpower > 0.0:
-						brownpower = execload + netpower + batcharge - greenpower - batdischarge
+						brownpower = execload*pue + netpower + batcharge - greenpower - batdischarge
 						if brownpower < 0.0:
 							brownpower = 0.0
+						print 'Adjust brown: %.1fW' % brownpower 
 					if batdischarge > 0.0:
-						batdischarge = execload + netpower + batcharge - greenpower - brownpower
+						batdischarge = execload*pue + netpower + batcharge - greenpower - brownpower
 						if batdischarge < 0.0:
 							batdischarge = 0.0
+						print 'Adjust battery discharge: %.1fW' % batdischarge 
 					# Surplus green
 					if batdischarge == 0.0 and brownpower == 0.0:
 						# If we are charging, charge more
 						if batcharge > 0.0 or stateChargeBattery:
-							batcharge += greenpower - execload
+							batcharge += greenpower - execload*pue
+							print 'Adjust battery charge: %.1fW' % batcharge 
 						# Otherwise, just net meter
 						else:
-							netpower += greenpower - execload
-						brownpower = 0.0
+							netpower += greenpower - execload*pue
+							print 'Adjust net metering: %.1fW' % netpower
 				
 				# Charge/discharge battery
 				battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
@@ -402,18 +420,19 @@ class Simulator:
 if __name__ == "__main__":
 	parser = OptionParser(usage="usage: %prog [options] filename", version="%prog 1.0")
 	# Data files
-	parser.add_option('-w', '--workload', dest='workload', help='specify the workload file',       default=DATA_PATH+'/workload/variable.workload')
-	parser.add_option('-l', '--location', dest='location', help='specify the location file',       default=DATA_PATH+'/parasol.location')
-	parser.add_option('-i', '--infra',    dest='infra',    help='specify the infrastructure file', default=DATA_PATH+'/parasol.infra')
+	parser.add_option('-w', '--workload', dest='workload',  help='specify the workload file',               default=DATA_PATH+'workload/variable.workload')
+	parser.add_option('-l', '--location', dest='location',  help='specify the location file',               default=DATA_PATH+'locations/parasol.location')
+	parser.add_option('-i', '--infra',    dest='infra',     help='specify the infrastructure file',         default=DATA_PATH+'parasol.infra')
 	# Period
-	parser.add_option('-p', '--period',   dest='period',   help='specify the infrastructure file', default='1y')
+	parser.add_option('-p', '--period',   dest='period',    help='specify the infrastructure file', default='1y')
 	# Infrastructure options
 	parser.add_option('-s', '--solar',    dest='solar',     type="float", help='specify the infrastructure has solar', default=None)
 	parser.add_option('-b', '--battery',  dest='battery',   type="float", help='specify the infrastructure has batteries', default=None)
 	parser.add_option('--nosolar',        dest='nosolar',   action="store_true",  help='specify the infrastructure has no solar')
-	parser.add_option('--nobattery',      dest='nobattery', action="store_true",   help='specify the infrastructure has no batteries')
-	parser.add_option('--offset',         dest='offset',    type="string", help='specify offset', default=None)
-	parser.add_option('--solardata',      dest='solardata',    type="string", help='specify offset', default=None)
+	parser.add_option('--nobattery',      dest='nobattery', action="store_true",  help='specify the infrastructure has no batteries')
+	parser.add_option('-c', '--cooling',  dest='cooling',   help='specify the cooling infrastructure file', default=None)
+	#parser.add_option('--offset',         dest='offset',    type="string", help='specify offset', default=None)
+	parser.add_option('--solardata',      dest='solardata', type="string", help='specify offset', default=None)
 	# GreenSwitch
 	parser.add_option('-g', '--nogswitch',dest='greenswitch',action="store_false", help='specify if we use greenswitch')
 	# Load
@@ -434,17 +453,22 @@ if __name__ == "__main__":
 		simulator.infra.battery.capacity = options.battery
 	if options.solar != None:
 		simulator.infra.solar.capacity = options.solar
-	if options.delay == True:
-		simulator.workload.deferrable = True
 	if options.netmeter != None:
 		simulator.location.netmetering = options.netmeter
-	if options.greenswitch == False:
-		simulator.greenswitch = False
+	if options.cooling != None:
+		simulator.infra.cooling.read(options.cooling)
+	# Solar (e.g. validation)
 	if options.solardata != None:
 		simulator.location.solar = simulator.location.readValues(options.solardata)
 		simulator.location.solarcapacity = 3200.0
 		simulator.location.solarefficiency = 0.97
 		simulator.location.solaroffset = 0.0
+	# Policy
+	if options.delay == True:
+		simulator.workload.deferrable = True
+	if options.greenswitch == False:
+		simulator.greenswitch = False
+	
 	simulator.infra.printSummary()
 	
 	# Run simulation

@@ -144,14 +144,23 @@ class IT:
 	
 	"""
 	Calculate the load based on the number of servers
-	@param numServers
-	@param minimum
-	@param turnoff
+	@param numServers Number of servers running.
+	@param minimum Minimum number of servers.
+	@param turnoff If the server can be turned off.
 	"""
 	def getPower(self, numServers, minimum=0, turnoff=True):
 		power = 0.0
 		auxminimum = minimum
 		reqServers = numServers
+		
+		# Account for full 
+		maxServers = self.getNumServers()
+		if reqServers > maxServers:
+			maxPower = self.getMaxPower()
+			while reqServers > maxServers:
+				reqServers -= maxServers
+				power += maxPower
+		
 		# Walk the racks
 		for rackId in sorted(self.racks.keys()):
 			# Add switch power
@@ -165,8 +174,12 @@ class IT:
 			# Walk the servers in the rack
 			for serverId in self.racks[rackId].servers:
 				# Add server power
-				if reqServers > 0:
+				if reqServers >= 1:
 					power += self.racks[rackId].servers[serverId].powerpeak
+					reqServers -= 1
+					auxminimum -= 1
+				elif reqServers > 0:
+					power += self.racks[rackId].servers[serverId].poweridle + reqServers*(self.racks[rackId].servers[serverId].powerpeak-self.racks[rackId].servers[serverId].poweridle)
 					reqServers -= 1
 					auxminimum -= 1
 				elif auxminimum > 0:
@@ -177,6 +190,22 @@ class IT:
 				else:
 					power += self.racks[rackId].servers[serverId].powers3
 		return power
+	
+	"""
+	Calculate how many nodes are up based on power
+	"""
+	def getNodes(self, power, minimum=0, turnoff=True):
+		# Use dicotomic search
+		top = self.getNumServers()
+		bottom = 0
+		while top-bottom > 0.05:
+			middle = bottom + (top-bottom)/2.0
+			auxpower = self.getPower(middle, minimum=minimum, turnoff=turnoff)
+			if power >= auxpower:
+				bottom = middle
+			else:
+				top = middle
+		return round(middle, 1)
 
 """
 Model for datacenter cooling system.
@@ -186,13 +215,18 @@ class Cooling:
 		# Temperature -> Power
 		self.power = {}
 		self.pue = {}
+		self.coolingtype = None
 	
 	# Get a server configuration from its type
 	def read(self, coolingtype):
 		if coolingtype != None:
 			with open(DATA_PATH+coolingtype.lower()+'.cooling') as f:
+				# Clean
+				self.power = {}
+				self.pue = {}
+				self.coolingtype = coolingtype
+				# Read lines
 				for line in f.readlines():
-					# Clean line
 					line = cleanLine(line)
 					# Parse line
 					if line != '' and line.find('=') >= 0:
@@ -206,40 +240,45 @@ class Cooling:
 							temperature = float(key[len('pue.'):])
 							self.pue[temperature] = float(value)
 	
-	# Get the cooling power for a given temperature
+	# Get the cooling power for an external temperature
 	def getPower(self, temperature):
 		temperatures = list(sorted(self.power.keys()))
-		
-		if temperature < temperatures[0]:
+		if len(temperatures) == 0:
+			return 0.0
+		elif temperature < temperatures[0]:
 			return self.power[temperatures[0]]
 		elif temperature > temperatures[-1]:
 			return self.power[temperatures[-1]]
 		elif temperature in temperatures:
 			return self.power[temperature]
 		else:
+			# Walk the list to find the right power
 			for i in range(0, len(temperatures)):
 				if temperature < temperatures[i]:
 					p1 = (temperatures[i-1],self.power[temperatures[i-1]])
 					p2 = (temperatures[i],  self.power[temperatures[i]])
 					return interpolate(p1, p2, temperature)
-		return None
+		return 0.0
 	
-	# Get the datacenter PUE for a given temperature
+	# Get the datacenter PUE for an external temperature
 	def getPUE(self, temperature):
 		temperatures = list(sorted(self.pue.keys()))
-		if temperature < temperatures[0]:
+		if len(temperatures) == 0:
+			return 1.0
+		elif temperature < temperatures[0]:
 			return self.pue[temperatures[0]]
 		elif temperature > temperatures[-1]:
 			return self.pue[temperatures[-1]]
 		elif temperature in temperatures:
 			return self.pue[temperature]
 		else:
+			# Walk the list to find the right PUE
 			for i in range(0, len(temperatures)):
 				if temperature < temperatures[i]:
 					p1 = (temperatures[i-1],self.pue[temperatures[i-1]])
 					p2 = (temperatures[i],  self.pue[temperatures[i]])
 					return interpolate(p1, p2, temperature)
-		return None
+		return 1.0
 
 """
 Define the infrastructure of a green datacenter:
@@ -347,4 +386,11 @@ if __name__ == "__main__":
 	print 'Covering subset running 8: %.1fW' % infra.it.getPower(8, minimum=8)
 	print 'Peak: %.1fW' % infra.it.getPower(64, minimum=8)
 	print 'Peak: %.1fW' % infra.it.getMaxPower()
+	
+	print 'Get nodes number of nodes based on power:'
+	power = infra.it.getPower(4, minimum=0)
+	print 4, power, infra.it.getNodes(power, minimum=0)
+	power = infra.it.getPower(20, minimum=0)
+	print 20, power, infra.it.getNodes(power, minimum=0)
+	print 64, infra.it.getMaxPower(), infra.it.getNodes(infra.it.getMaxPower(), minimum=0)
 	

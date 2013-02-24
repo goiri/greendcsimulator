@@ -1,17 +1,14 @@
 # Solar panels
 solar.capacity = 3200 # 3.2kW
 solar.efficiency = 0.97
-#solar.price = 5.5 # $5500/kW -> $5.5/W
-solar.price = 2.28 # ASPLOS $2.28/W with incentives
-
+solar.price = 2.28 # ASPLOS $2.28/W with incentives # $5500/kW -> $5.5/W
 
 # Wind turbines
 wind.price = 1.5 # $1500/kW -> $1.5/W
 
 # Batteries
 battery.capacity = 32000 # 32kWh
-#battery.capacity = 0 # 32kWh
-battery.efficiency = 0.87
+battery.efficiency = 0.87 # 87%
 battery.price = 0.213 # $0.213/Wh
 
 # Cooling

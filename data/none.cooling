@@ -1,2 +1,2 @@
-power.20 = 0.0 # W
-power.35 = 0.0 # W
+# No cooling/PUE
+pue.20 = 1.0

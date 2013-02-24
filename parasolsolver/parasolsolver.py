@@ -294,7 +294,9 @@ class ParasolModel:
 				# Checking previous load is actually executed
 				if self.options.optPerf == 0:
 					sumLoad = quicksum(Load[t] for t in range(0, self.options.maxTime))
+					#sumWorkload = self.options.prevLoad + quicksum(Workload[t] for t in range(0, self.options.maxTime))
 					sumWorkload = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, self.options.maxTime))
+					#sumWorkload = (self.options.prevLoad + quicksum(Workload[t] for t in range(0, self.options.maxTime)))/self.options.compression
 					m.addConstr(sumLoad >= sumWorkload, "WorkloadMin")
 				else:
 					# We don't need to run everything if we try to minimize the difference
@@ -304,7 +306,9 @@ class ParasolModel:
 				#for t in range(0, self.options.maxTime):
 				for t in range(1, self.options.maxTime):
 					sumLoadT = quicksum(Load[t] for t in range(0, t))
+					#sumWorkloadT = self.options.prevLoad + quicksum(Workload[t] for t in range(0, t))
 					sumWorkloadT = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, t))
+					#sumWorkloadT = (self.options.prevLoad + quicksum(Workload[t] for t in range(0, t)))/self.options.compression
 					m.addConstr(sumLoadT <= sumWorkloadT, "WorkloadMin["+str(t)+"]") # +1 to have some margin
 			if self.options.minSizeIni != None:
 				m.addConstr(Load[0] >= self.options.minSizeIni, 'WorkloadMinInitial')

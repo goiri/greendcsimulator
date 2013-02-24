@@ -12,12 +12,12 @@ WORKLOAD="data/workload/flash.workload"
 WORKLOAD="data/workload/variable.workload"
 WORKLOAD="data/workload/mix.workload"
 # All workloads
-WORKLOADS="data/workload/asplos.workload data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload data/workload/flash.workload data/workload/search.workload data/workload/orkut.workload data/workload/mix.workload"
+WORKLOADS="data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload data/workload/flash.workload data/workload/search.workload data/workload/orkut.workload data/workload/mix.workload" #"data/workload/asplos.workload"
 
 # Locations
 LOCATIONS=""
-LOCATIONS=$LOCATIONS"data/locations/newark.location"
-LOCATIONS=$LOCATIONS"data/locations/quito.location"
+LOCATIONS=$LOCATIONS" data/locations/newark.location"
+LOCATIONS=$LOCATIONS" data/locations/quito.location"
 # Net metering. It's already defined in the location
 NETMETER_0=0.0  #   0%
 NETMETER_WR=0.4 #  40%
@@ -27,7 +27,7 @@ NETMETER_RR=1.0 # 100%
 MAXTHREADS=`cat /proc/cpuinfo  | grep processor | wc -l`
 NUMTHREADS=0
 
-# Parse solar modes
+# Read solar modes from command line
 SOLARS="3200 0 800 1600 2400"
 if [ $# -ge 1 ]; then
 	SOLARS=$*
