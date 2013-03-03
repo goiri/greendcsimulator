@@ -276,8 +276,8 @@ class ParasolModel:
 		if self.load != None:
 			if not self.options.loadDelay:
 				for t in range(0, self.options.maxTime):
-					m.addConstr(Load[t] >= Workload[t], "WorkloadMin["+str(t)+"]")
-					#m.addConstr(Load[t] == Workload[t], "WorkloadMin["+str(t)+"]")
+					#m.addConstr(Load[t] >= Workload[t], "WorkloadMin["+str(t)+"]")
+					m.addConstr(Load[t] == Workload[t], "WorkloadMin["+str(t)+"]") # TODO
 			else:
 				# Summation of powers have to be the power required by the workload
 				# Checking previous load is actually executed
@@ -314,7 +314,6 @@ class ParasolModel:
 			if self.options.batCap > 0:
 				aux += LoadBatt[t]
 			m.addConstr(PUE[t] * Load[t] == aux,  "LoadProvide["+str(t)+"]")
-			#m.addConstr(Load[t] <= self.options.maxSize, "MaxSize["+str(t)+"]")
 		
 		# Maximum green availability
 		# s.t. MaxGreen {t in TIME} :      LoadGreen[t] + BattGreen[t] + NetGreen[t] <= GreenAvail[t]"
@@ -325,7 +324,8 @@ class ParasolModel:
 					aux += BattGreen[t]
 				if self.greenAvail != None and self.brownPrice != None:
 					aux += NetGreen[t]
-				m.addConstr(LoadGreen[t] + aux <= GreenAvail[t], "MaxGreen["+str(t)+"]")
+				#m.addConstr(LoadGreen[t] + aux <= GreenAvail[t], "MaxGreen["+str(t)+"]")
+				m.addConstr(LoadGreen[t] + aux == GreenAvail[t], "MaxGreen["+str(t)+"]") # TODO
 		
 		# Battery
 		if self.options.batCap > 0:

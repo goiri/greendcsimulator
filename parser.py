@@ -305,7 +305,7 @@ def getEnergyStats(logfile):
 					execload =      float(lineSplit[10])
 					prevload =      float(lineSplit[11])
 					
-					# Account
+					# Account TODO per month
 					if brownpower > peakpower:
 						peakpower = brownpower
 					

@@ -110,7 +110,8 @@ class Location:
 								self.brownenergyprice.continous = False
 							elif key.startswith('brown.power'):
 								# Read file with the temperature
-								self.brownpowerprice = float(value)
+								self.brownpowerprice = self.readValues(value)
+								self.brownpowerprice.continous = False
 							elif key.startswith('brown.netmetering'):
 								# Read file with the temperature
 								self.netmetering = float(value)

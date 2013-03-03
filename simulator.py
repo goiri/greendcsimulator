@@ -25,7 +25,6 @@ TEST list:
 * Compression of the load when it is deferred
 * New proposal for peak power and energy accounting
 """
-
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
 		self.infra = Infrastructure(infrafile)
@@ -146,7 +145,6 @@ class Simulator:
 		solver.options.maxSize = self.infra.it.getMaxPower()
 		# Power infrastructure costs
 		solver.options.netMeter = self.location.netmetering
-		solver.options.peakCost = self.location.brownpowerprice
 		# Battery
 		solver.options.batEfficiency = self.infra.battery.efficiency
 		solver.options.batCap = self.infra.battery.capacity
@@ -196,6 +194,7 @@ class Simulator:
 				#solver.options.previousPeak = 0.95*peakbrown
 				#solver.options.previousPeak = 0.85*peakbrown
 				#solver.options.previousPeak = 0.0
+				solver.options.peakCost = self.location.brownpowerprice[time]
 				# Battery
 				solver.options.batIniCap = battery
 				# Adapt DoD taking into account current capacity
@@ -472,7 +471,7 @@ class Simulator:
 			
 			# Peak power accounting every month
 			if (startdate + timedelta(seconds=time)).month != currentmonth:
-				costbrownpower += self.location.brownpowerprice * peakbrown/1000.0
+				costbrownpower += self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
 				# Reseat accounting
 				peakbrown = 0.0
 				currentmonth = (startdate + timedelta(seconds=time)).month
@@ -483,7 +482,7 @@ class Simulator:
 				fout.flush()
 		
 		# Account for the last month
-		costbrownpower += self.location.brownpowerprice * peakbrown/1000.0
+		costbrownpower += self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
 		
 		# Infrastructure cost (lifetime)
 		costinfrastructure = 0.0
