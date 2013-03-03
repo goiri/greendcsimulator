@@ -18,19 +18,20 @@ class WindTurbines:
 
 # Energy storage
 class Batteries:
-	def __init__(self, capacity=0, efficiency=0.85, batterylifetimedata='data/leadacid.battery'):
+	def __init__(self, capacity=0, efficiency=0.85, lifetimedata='data/leadacid.battery'):
 		self.capacity = capacity # Wh
 		self.efficiency = efficiency # %
-		self.batterylifetime = None
-		if batterylifetimedata != None:
-			self.batterylifetime = self.readBatteryLifetimeProfile(batterylifetimedata)
+		self.lifetime = None
+		self.lifetimemax = 5.0 # 5 years
+		if lifetimedata != None:
+			self.lifetime = self.readBatteryLifetimeProfile(lifetimedata)
 	
 	"""
 	Get the file with the battery lifetime
 	"""
-	def readBatteryLifetimeProfile(self, batterylifetimedata):
+	def readBatteryLifetimeProfile(self, lifetimedata):
 		ret = []
-		with open(batterylifetimedata, 'r') as fin:
+		with open(lifetimedata, 'r') as fin:
 			for line in fin.readlines():
 				# Clean line
 				line = cleanLine(line)
@@ -45,7 +46,7 @@ class Batteries:
 	def getBatteryCycles(self, dod):
 		prevauxdod = None
 		prevcycles = None
-		for auxdod, auxcycles in self.batterylifetime:
+		for auxdod, auxcycles in self.lifetime:
 			if dod == auxdod:
 				return auxcycles
 			elif dod < auxdod:
@@ -62,6 +63,14 @@ class Batteries:
 			prevauxdod = auxdod
 			prevcycles = auxcycles
 		return 0.0
+	
+	"""
+	Get what percentage of the battery has been used
+	@return Percentage (%). The maximum would be 100.
+	"""
+	def getPercentageBattery(self, dod):
+		cycles = self.getBatteryCycles(dod)
+		return 100.0/cycles
 
 # IT equipment
 class Server:

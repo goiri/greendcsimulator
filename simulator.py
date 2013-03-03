@@ -20,24 +20,24 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
-* Battery lifetime model (75% parser)
 * On/off peak prices around the world are tricky. We dont have summar/winter pricings
-* Google workload
 TEST list:
 * Compression of the load when it is deferred
 * New proposal for peak power and energy accounting
-
 """
+
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
 		self.infra = Infrastructure(infrafile)
 		self.location = Location(locationfile)
 		self.workload = Workload(workloadfile)
 		self.period = period
+		# turn on/off servers
+		self.turnoff = turnoff
 		# Policy
 		self.greenswitch = True
-		# Workload
-		self.turnoff = turnoff
+		# Battery management
+		self.batteryManagement = True
 	
 	def getLogFilename(self):
 		filename = LOG_PATH+'/result'
@@ -91,10 +91,21 @@ class Simulator:
 		prevLoad = 0.0
 		prevNodes = 0.0
 		# We start with full capacity
-		battery = self.infra.battery.capacity
+		batlevel = 100.0 # Fully charge
+		prevbatlevel = 100.0 # Fully charge
+		battery = batlevel/100.0 * self.infra.battery.capacity # Wh
 		# Battery
 		batcharge = 0.0
 		batdischarge = 0.0
+		# Battery status
+		batchargingstatus = False
+		batdischargingstatus = True
+		batcyclestartlevel = 100.0
+		# Battery stats
+		batnumdischarges = 0 # How many discharges
+		battotaldischarge = 0.0 # Total DoD (%)
+		batmaxdischarge = 0.0 # Maximum DoD (%)
+		batlifetime = 0.0 # Lifetime (%)
 		# State
 		stateChargeBattery = False
 		stateNetMeter = False
@@ -124,7 +135,6 @@ class Simulator:
 		solver.options.optCost = 1.0
 		# Load
 		solver.options.loadDelay = self.workload.deferrable
-		# TODO
 		solver.options.compression = self.workload.compression
 		'''
 		if solver.options.loadDelay:
@@ -141,8 +151,24 @@ class Simulator:
 		solver.options.batEfficiency = self.infra.battery.efficiency
 		solver.options.batCap = self.infra.battery.capacity
 		solver.options.batDischargeMax = 0.20 # 20% DoD
+		# Set initial DoD based on 1 discharge per day
+		if self.batteryManagement:
+			start = 0.0
+			end = 70.0
+			while end-start > 0.1:
+				mid = start+(end-start)/2.0
+				cycles = self.infra.battery.getBatteryCycles(mid)
+				lifetimeyear = (100.0/cycles) * 365
+				if lifetimeyear > 20.0:
+					end = mid
+				else:
+					start = mid
+			solver.options.batDischargeMax = mid/100.0
+			if solver.options.batDischargeMax > 0.70:
+				solver.options.batDischargeMax = 0.70
 		
-		# Iterate maximum time PERIOD in steps of TIMESTEP
+		# Simulation core
+		# Iterate the maximum time (PERIOD) in steps (TIMESTEP)
 		for t in range(0, self.period/TIMESTEP):
 			# Collect current data
 			time = t*TIMESTEP
@@ -172,7 +198,7 @@ class Simulator:
 				#solver.options.previousPeak = 0.0
 				# Battery
 				solver.options.batIniCap = battery
-				# Check battery lowest capacity
+				# Adapt DoD taking into account current capacity
 				if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap < (1.0-solver.options.batDischargeMax):
 					solver.options.batDischargeMax = 1.0 - solver.options.batIniCap/solver.options.batCap + 0.01
 				# Covering subset workload
@@ -238,7 +264,12 @@ class Simulator:
 				
 				# Generate solution
 				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
-				
+			
+			# Initialize
+			brownpower = 0.0
+			netpower = 0.0
+			batcharge = 0.0
+			batdischarge = 0.0
 			# Check if we have a GreenSwitch solution
 			if sol == None:
 				if self.greenswitch:
@@ -251,25 +282,16 @@ class Simulator:
 				pue = self.infra.cooling.getPUE(temperature)
 				# Use brown
 				brownpower = workload*pue - greenpower
-				netpower = 0.0
 				if brownpower < 0.0:
 					netpower = -1.0*brownpower
 					brownpower = 0.0
 				# Use batteries if we can
-				batdischarge = 0.0
-				batcharge = 0.0
 				if brownpower > 0.0:
 					if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap > (1.0-solver.options.batDischargeMax):
 						batdischarge += brownpower
 						brownpower = 0.0
 				# Load
 				execload = workload
-				# State
-				stateChargeBattery = False
-				if netpower > 0:
-					stateNetMeter = True
-				else:
-					stateNetMeter = False
 			else:
 				# Load
 				reqNodes = self.workload.getLoad(time)*numServers
@@ -356,22 +378,88 @@ class Simulator:
 						else:
 							netpower += greenpower - execload*pue
 							print 'Adjust net metering: %.1fW' % netpower
-				
-				# Charge/discharge battery
-				battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
-				if battery > self.infra.battery.capacity:
-					battery = self.infra.battery.capacity
-				
-				# Change state
-				if batcharge > 0.0:
-					stateChargeBattery = True
-				else:
-					stateChargeBattery = False
-				if netpower > 0.0:
-					stateNetMeter = True
-				else:
-					stateNetMeter = False
-				
+					
+					print 'Solution at', timeStr(time), 'was:'
+					print ' Green    ', greenAvail[0]
+					print ' Workload ', worklPredi[0]
+					print ' PUE      ', puePredi[0]
+					print ' Brown    ', brownPrice[0]
+					print ' Load     ', sol['Load[0]']
+					print ' Workload ', sol['Workload[0]']
+					print ' BPrice   ', sol['BrownPrice[0]']
+					
+					print ' LoadBrown', sol['LoadBrown[0]']
+					print ' LoadBatt ', sol['LoadBatt[0]']
+					print ' LoadGreen', sol['LoadGreen[0]']
+					
+					print ' BattBrown',  sol['BattBrown[0]']
+					print ' BattGreen',  sol['BattGreen[0]']
+					print ' CapBattery', sol['CapBattery[0]']
+					
+					print ' NetGreen',  sol['NetGreen[0]']
+					
+					print ' PeakBrown',  sol['PeakBrown']
+			
+			# Charge/discharge battery
+			battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
+			if battery > self.infra.battery.capacity:
+				battery = self.infra.battery.capacity
+			
+			# Account battery lifetime
+			if self.infra.battery.capacity > 0.0:
+				# Start charging cycle
+				batlevel = 100.0 * battery / self.infra.battery.capacity
+				if batcharge > 0.0 and not batchargingstatus:
+					batchargingstatus = True
+					batdischargingstatus = False
+					# Account previous discharge
+					batlevel0 = batcyclestartlevel
+					batlevel1 = prevbatlevel
+					# A discharge of more than 0.1%
+					if batlevel0 - batlevel1 > 0.1:
+						batnumdischarges += 1
+						battotaldischarge += batlevel0 - batlevel1
+						if batlevel0 - batlevel1 > batmaxdischarge:
+							batmaxdischarge = batlevel0 - batlevel1
+						# Account lifetime
+						dod = batlevel0 - batlevel1
+						cycles = self.infra.battery.getBatteryCycles(dod)
+						if cycles > 0.0:
+							batlifetime += 100.0/cycles
+					#print '%s: %.2f%% -> %.2f%%: %.3f%%' % (timeStr(time), batlevel0, batlevel1, batlifetime)
+				# Start discharging cycle
+				elif batdischarge > 0.0 and not batdischargingstatus:
+					batchargingstatus = False
+					batdischargingstatus = True
+					batcyclestartlevel = batlevel
+				# Store previous value
+				prevbatlevel = batlevel
+			
+				# Change DoD based on battery lifetime projections (every 5 days)
+				if self.batteryManagement and time % parseTime('5d') == 0:
+					# Calculate battery lifetime by this time
+					projbatlifetime = 100.0*time/(self.infra.battery.lifetimemax*365*24*60*60)
+					if batlifetime < projbatlifetime:
+						solver.options.batDischargeMax += 5/100.0 # Increase 5%
+					elif batlifetime > projbatlifetime:
+						solver.options.batDischargeMax -= 5/100.0 # Decrease 5%
+					# Adjust margins
+					if solver.options.batDischargeMax > 0.50:
+						solver.options.batDischargeMax = 0.50
+					if solver.options.batDischargeMax < 0.00:
+						solver.options.batDischargeMax = 0.00
+					
+			
+			# Update state
+			if batcharge > 0.0:
+				stateChargeBattery = True
+			else:
+				stateChargeBattery = False
+			if netpower > 0.0:
+				stateNetMeter = True
+			else:
+				stateNetMeter = False
+			
 			# Check peak brown power
 			if brownpower > peakbrown:
 				peakbrown = brownpower
@@ -397,14 +485,17 @@ class Simulator:
 		# Account for the last month
 		costbrownpower += self.location.brownpowerprice * peakbrown/1000.0
 		
-		# Infrastructure cost
+		# Infrastructure cost (lifetime)
 		costinfrastructure = 0.0
-		# Solar
-		costinfrastructure += self.infra.solar.capacity * self.infra.solar.price
-		# Wind
-		costinfrastructure += self.infra.wind.capacity * self.infra.wind.price
-		# Battery
-		costinfrastructure += self.infra.battery.capacity * self.infra.battery.price
+		costinfrastructure += self.infra.solar.capacity * self.infra.solar.price # Solar
+		costinfrastructure += self.infra.wind.capacity * self.infra.wind.price # Wind
+		costinfrastructure += self.infra.battery.capacity * self.infra.battery.price * TOTAL_YEARS/self.infra.battery.lifetimemax # Battery
+		
+		# Infrastructure cost (first)
+		costinfrastructurefirst = 0.0
+		costinfrastructurefirst += self.infra.solar.capacity * self.infra.solar.price # Solar
+		costinfrastructurefirst += self.infra.wind.capacity * self.infra.wind.price # Wind
+		costinfrastructurefirst += self.infra.battery.capacity * self.infra.battery.price # Battery
 		
 		# Summary
 		print '$%.2f + $%.2f + $%.2f = $%.2f' % (costbrownenergy, costbrownpower, costinfrastructure, costbrownenergy+costbrownpower+costinfrastructure)
@@ -413,7 +504,11 @@ class Simulator:
 			fout.write('# Summary:\n')
 			fout.write('# Brown energy: $%.2f\n' % (costbrownenergy))
 			fout.write('# Peak brown power: $%.2f\n' % (costbrownpower))
-			fout.write('# Infrastructure: $%.2f\n' % (costinfrastructure))
+			fout.write('# Infrastructure: $%.2f ($%.2f)\n' % (costinfrastructure, costinfrastructurefirst))
+			fout.write('# Battery number discharges: %d\n' % (batnumdischarges))
+			fout.write('# Battery max discharge: %.2f%%\n' % (batmaxdischarge))
+			fout.write('# Battery total discharge: %.2f%%\n' % (battotaldischarge))
+			fout.write('# Battery lifetime: %.2f%%\n' % (batlifetime))
 			fout.write('# Total: $%.2f\n' % (costbrownenergy+costbrownpower+costinfrastructure))
 			fout.close()
 

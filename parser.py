@@ -180,7 +180,33 @@ class Experiment:
 """
 Get the depth of discharge information from the logfile
 """
-def getDepthOfDischarge(logfile):
+def getBatteryStats(filename):
+	numdischarges = None
+	totaldischarge = None
+	maxdischarge = None
+	lifetime = None
+	try:
+		with open(filename) as f:
+			# Go to the end of the file
+			f.seek(-2*1024, os.SEEK_END)
+			f.readline()
+			# Start checking from the end
+			for line in f.readlines():
+				if line.startswith('#'):
+					line = line.replace('\n', '')
+					if line.startswith('# Battery number discharges:'):
+						numdischarges = int(line.split(' ')[4])
+					elif line.startswith('# Battery max discharge'):
+						maxdischarge = float(line.split(' ')[4][:-1])
+					elif line.startswith('# Battery total discharge:'):
+						totaldischarge = float(line.split(' ')[4][:-1])
+					elif line.startswith('# Battery lifetime:'):
+						lifetime = float(line.split(' ')[3][:-1])
+	except Exception, e:
+		print 'Error getting battery stats', filename
+	return numdischarges, totaldischarge, maxdischarge, lifetime
+'''
+def getBatteryStats(logfile):
 	# Get battery model
 	battery = Batteries()
 	# Results
@@ -195,7 +221,7 @@ def getDepthOfDischarge(logfile):
 			# Get battery size from file name
 			batterysize = int(logfile.split('-')[2])
 			# Read file and get info
-			prevbatpower = 0.0
+			#prevbatpower = 0.0
 			charging = False
 			discharging = False
 			startbatlevel = None
@@ -210,6 +236,7 @@ def getDepthOfDischarge(logfile):
 					batlevel =      float(lineSplit[7])
 					batpower = batcharge - batdischarge
 					
+					# Start charging
 					if batcharge > 0 and not charging:
 						charging = True
 						discharging = False
@@ -226,24 +253,23 @@ def getDepthOfDischarge(logfile):
 								# Account lifetime
 								dod = batlevel0 - batlevel1
 								cycles = battery.getBatteryCycles(dod)
-								#print dod, '% -------->', cycles, 'cycles'
 								if cycles > 0.0:
 									lifetime += 100.0/cycles
 						startbatlevel = batlevel
-						
+					# Start discharging
 					elif batdischarge > 0 and not discharging:
 						charging = False
 						discharging = True
 						startbatlevel = batlevel
-					
 					# Store previous value
-					prevbatpower = batpower
+					#prevbatpower = batpower
 					prevbatlevel = batlevel
 	except Exception, e:
 		print 'Error getting depth of discharge for', logfile
 		print 'Cause:', e
 		#pass
 	return numdischarges, totaldischarge, maxdischarge, lifetime
+'''
 
 """
 Read the log file and get the statistics about energy consumption
@@ -317,17 +343,21 @@ def genFigures(filenamebase):
 	MAX_PROCESSES = 8
 	processes = []
 	now = time.time()
-	newDataFile = False
+	newData = False
 	# Generate data for plotting
 	inputfile =  LOG_PATH+filenamebase+'.log'
 	if os.path.isfile(inputfile):
 		# Generate input data (make he figure boxed)
 		datafile = '/tmp/'+LOG_PATH+filenamebase+'.data'
+		# Create folder if it does not exist
 		if not os.path.isdir(datafile[:datafile.rfind('/')]):
 			os.makedirs(datafile[:datafile.rfind('/')])
-		if not os.path.isfile(datafile) or os.path.getmtime(datafile) < now - parseTime('24h'):
+		# Generate data file if needed (does not exist or newer input file)
+		if not os.path.isfile(datafile) or os.path.getmtime(inputfile) > os.path.getmtime(datafile):
 			genPlotData(inputfile, datafile)
-			newDataFile = True
+			# Update modify time for datafile
+			os.utime(datafile, (os.path.getatime(datafile), os.path.getmtime(inputfile)))
+			newData = True
 		# Generate a figure for each monthFb
 		for i in range(1, 12+1):
 			daystart = int(datetime.date(2012, i, 1).strftime('%j'))-1
@@ -340,7 +370,7 @@ def genFigures(filenamebase):
 			imgfile = LOG_PATH+'img/'+filenamebase+'/'+str(i)+'.png'
 			if not os.path.isdir(imgfile[:imgfile.rfind('/')]):
 				os.makedirs(imgfile[:imgfile.rfind('/')])
-			if not os.path.isfile(imgfile) or os.path.getmtime(imgfile) < now - parseTime('24h') or os.path.getmtime(datafile) < now - parseTime('24h'):
+			if not os.path.isfile(imgfile) or newData:
 				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '%d' % (daystart*24), '%d' % (dayend*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
 				processes.append(p)
 			
@@ -348,7 +378,7 @@ def genFigures(filenamebase):
 			imgfile = LOG_PATH+'img/'+filenamebase+'/'+str(i)+'-day.png'
 			if not os.path.isdir(imgfile[:imgfile.rfind('/')]):
 				os.makedirs(imgfile[:imgfile.rfind('/')])
-			if not os.path.isfile(imgfile) or os.path.getmtime(imgfile) < now - parseTime('24h') or os.path.getmtime(datafile) < now - parseTime('24h'):
+			if not os.path.isfile(imgfile) or newData:
 				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '%d' % ((daystart+15)*24), '%d' % ((daystart+18)*24)])#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
 				processes.append(p)
 			
@@ -421,16 +451,32 @@ def saveDetails(experiment):
 		fout.write('</ul>\n')
 		
 		fout.write('<h1>Battery</h1>\n')
-		numdischarges, totaldischarge, maxdischarge, lifetime = 0, 0, 0, 0
+		batnumdischarges = 0
+		battotaldischarge = 0
+		batmaxdischarge = 0
+		batlifetime = 0
 		if experiment.setup.battery > 0.0:
-			numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+experiment.getFilename()+'.log')
+			'''
+			elif line.startswith('# Battery number discharges:'):
+				batnumdischarges = int(line.split(' ')[4])
+			elif line.startswith('# Battery max discharge'):
+				batmaxdischarge = float(line.split(' ')[4][:-1])
+			elif line.startswith('# Battery total discharge:'):
+				battotaldischarge = float(line.split(' ')[4][:-1])
+			elif line.startswith('# Battery lifetime:'):
+				batlifetime = float(line.split(' ')[3][:-1])
+			'''
+			batnumdischarges, battotaldischarge, batmaxdischarge, batlifetime = getBatteryStats(LOG_PATH+experiment.getFilename()+'.log')
 		fout.write('<ul>\n')
-		fout.write('  <li>Number of discharges: %d</li>\n' % numdischarges)
-		if numdischarges>0:
-			fout.write('  <li>Average discharge: %.1f%%</li>\n' % (totaldischarge/numdischarges))
-			fout.write('  <li>Maximum discharge: %.1f%%</li>\n' % (maxdischarge))
-			fout.write('  <li>Total discharge: %.1f%%</li>\n' % totaldischarge)
-			fout.write('  <li>Lifetime: %.1f%% (%.1f years)</li>\n' % (lifetime, 100.0/lifetime))
+		if batlifetime == None:
+			fout.write('  <li>Processing...</li>\n')
+		else:
+			fout.write('  <li>Number of discharges: %d</li>\n' % batnumdischarges)
+			if batnumdischarges>0:
+				fout.write('  <li>Average discharge: %.1f%%</li>\n' % (battotaldischarge/batnumdischarges))
+				fout.write('  <li>Maximum discharge: %.1f%%</li>\n' % (batmaxdischarge))
+				fout.write('  <li>Total discharge: %.1f%%</li>\n' % battotaldischarge)
+				fout.write('  <li>Lifetime: %.1f%% (%.1f years)</li>\n' % (batlifetime, 100.0/batlifetime))
 		fout.write('</ul>\n')
 		
 		fout.write('<h1>Log</h1>\n')
@@ -522,7 +568,7 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 	fout.write('<tr>\n')
 	# Experiment progress
 	experimentDescription = getBarChart([experiment.progress, 100-experiment.progress], 100, width=75, color=['green', '#C0C0C0'])
-	if cost.energy > 0.0 or cost.peak > 0.0 or cost.capex > 0.0:
+	if experiment.cost.energy > 0.0 or experiment.cost.peak > 0.0 or experiment.cost.capex > 0.0:
 		experimentDescription = 'R'
 	if experiment.setup == baseexperiment.setup:
 		experimentDescription = '<b>'+experimentDescription+'</b>'
@@ -652,6 +698,12 @@ if __name__ == "__main__":
 			costenergy = 0.0
 			costpeak = 0.0
 			costcapex = 0.0
+			# Battery
+			batnumdischarges = None
+			batmaxdischarge = None
+			battotaldischarge = None
+			batlifetime = None
+			# Timing
 			lastTime = 0
 			try:
 				with open(LOG_PATH+filename) as f:
@@ -671,6 +723,14 @@ if __name__ == "__main__":
 							elif line.startswith('# Total:'):
 								#print 'Total:', line.split(' ')[2]
 								lastTime = period
+							elif line.startswith('# Battery number discharges:'):
+								batnumdischarges = int(line.split(' ')[4])
+							elif line.startswith('# Battery max discharge'):
+								batmaxdischarge = float(line.split(' ')[4][:-1])
+							elif line.startswith('# Battery total discharge:'):
+								battotaldischarge = float(line.split(' ')[4][:-1])
+							elif line.startswith('# Battery lifetime:'):
+								batlifetime = float(line.split(' ')[3][:-1])
 						else:
 							try:
 								expTime = int(line.split('\t')[0])
@@ -690,16 +750,7 @@ if __name__ == "__main__":
 			scenario =   Scenario(netmeter=netmeter, period=period, workload=workload)
 			setup =      Setup(itsize=itsize, solar=solar, battery=battery, location=location, cooling=cooling, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch)
 			cost =       Cost(energy=costenergy, peak=costpeak, capex=costcapex)
-			experiment = Experiment(scenario=scenario, setup=setup, progress=progress, cost=cost)
-			
-			# Check battery lifetime
-			experiment.batterylifetime = None
-			if '--nobattery' not in sys.argv:
-				numdischarges, totaldischarge, maxdischarge, lifetime = 0, 0, 0, 0
-				if battery > 0:
-					numdischarges, totaldischarge, maxdischarge, lifetime = getDepthOfDischarge(LOG_PATH+experiment.getFilename()+'.log')
-				if lifetime > 0:
-					experiment.batterylifetime = 100.0/lifetime
+			experiment = Experiment(scenario=scenario, setup=setup, progress=progress, cost=cost, batterylifetime=batlifetime)
 			
 			# Store results
 			if scenario not in results:
@@ -764,7 +815,7 @@ if __name__ == "__main__":
 					if experiment.cost.getTotal(TOTAL_YEARS) < bestexperiment.cost.getTotal(TOTAL_YEARS):
 						if experiment.setup.cooling==None or experiment.setup.cooling.lower()=='none':
 							bestexperiment = experiment
-			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (experiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
+			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
 			fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
 			fout.write('  <td align="right">%s</td>\n' % powerStr(bestexperiment.setup.solar))
 			fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 4.8*1000, color='green')+'</td>\n')
@@ -777,7 +828,7 @@ if __name__ == "__main__":
 					if experiment.cost.getTotal(TOTAL_YEARS) < bestexperiment.cost.getTotal(TOTAL_YEARS):
 						if experiment.setup.cooling==None or experiment.setup.cooling.lower()=='none':
 							bestexperiment = experiment
-			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (experiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
+			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
 			fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
 			fout.write('  <td align="right">%s</td>\n' % powerStr(bestexperiment.setup.solar))
 			fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 4.8*1000, color='green')+'</td>\n')
@@ -864,7 +915,7 @@ if __name__ == "__main__":
 					bestexperiment = baseexperiment
 					for experiment in results[scenario]:
 						if experiment.cost.getTotal(TOTAL_YEARS) < bestexperiment.cost.getTotal(TOTAL_YEARS) and experiment.isComplete():
-							if experiment.setup.deferrable and setup.location==location:
+							if experiment.setup.deferrable and experiment.setup.location==location:
 								bestexperiment = experiment
 					fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
 					fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
@@ -892,7 +943,8 @@ if __name__ == "__main__":
 		fout.write('<h1>Experiments</h1>\n')
 		fout.write('<a href="summary-experiments.html">List of experiments</a><br/>\n')
 		fout.write('Experiments: %d/%d<br/>\n' % (expTotal-expRunni, expTotal))
-		fout.write('Completed: %.1f%%<br/>\n' % (100.0*float(expTotal-expRunni)/expTotal))
+		if expTotal > 0:
+			fout.write('Completed: %.1f%%<br/>\n' % (100.0*float(expTotal-expRunni)/expTotal))
 		fout.write('<br/>\n')
 		
 		# Footer

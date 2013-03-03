@@ -12,7 +12,7 @@ WORKLOAD="data/workload/flash.workload"
 WORKLOAD="data/workload/variable.workload"
 WORKLOAD="data/workload/mix.workload"
 # All workloads
-WORKLOADS="data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload data/workload/flash.workload data/workload/search.workload data/workload/orkut.workload data/workload/mix.workload" #"data/workload/asplos.workload"
+WORKLOADS="data/workload/asplos.workload data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload data/workload/flash.workload data/workload/search.workload data/workload/orkut.workload data/workload/mix.workload"
 
 # Locations
 LOCATIONS=""
@@ -22,6 +22,11 @@ LOCATIONS=$LOCATIONS" data/locations/quito.location"
 NETMETER_0=0.0  #   0%
 NETMETER_WR=0.4 #  40%
 NETMETER_RR=1.0 # 100%
+
+
+# Simple experiments
+LOCATIONS="data/locations/newark.location"
+WORKLOADS="data/workload/asplos.workload"
 
 # Multiprocess
 MAXTHREADS=`cat /proc/cpuinfo  | grep processor | wc -l`

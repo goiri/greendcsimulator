@@ -39,6 +39,9 @@ class ParasolModel:
 		self.greenAvail = None
 		self.brownPrice = None
 		self.pue = None
+		# Store for auxiliary variables
+		self.auxvars = []
+		self.auxbins = []
 	
 	# Solve problem using Gurobi
 	def solve(self, jobs=None, initial=None, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
@@ -60,49 +63,97 @@ class ParasolModel:
 		if self.options.timeLimit > 0:
 			m.setParam("TimeLimit", self.options.timeLimit)
 
+		
+		# Parameters
+		# Green availability
+		if self.greenAvail != None:
+			GreenAvail = {}
+			jG = 0
+			for t in range(0, self.options.maxTime):
+				ts = t*self.options.slotLength
+				while len(self.greenAvail)>jG+1 and self.greenAvail[jG+1].t <= ts:
+					jG += 1
+				GreenAvail[t] = self.greenAvail[jG].v
+		# Brown prices
+		if self.brownPrice != None:
+			BrownPrice = {}
+			jB = 0
+			for t in range(0, self.options.maxTime):
+				# Look for current values
+				ts = t*self.options.slotLength
+				while len(self.brownPrice)>jB+1 and self.brownPrice[jB+1].t <= ts:
+					jB += 1
+				BrownPrice[t] = self.brownPrice[jB].v
+		# PUE
+		PUE = {}
+		MaxPUE = 0.0
+		if self.pue == None:
+			# Default PUE
+			for t in range(0, self.options.maxTime):
+				PUE[t] = 1.0
+		else:
+			jP = 0
+			for t in range(0, self.options.maxTime):
+				# Look for current values
+				ts = t*self.options.slotLength
+				while len(self.pue)>jP+1 and self.pue[jP+1].t <= ts:
+					jP += 1
+				PUE[t] = self.pue[jP].v
+				if PUE[t] > MaxPUE:
+					MaxPUE = PUE[t]
+		PUE[-1] = PUE[0] # For battery
+		
+		# Workload
+		if self.load != None:
+			Workload = {}
+			jW = 0
+			for t in range(0, self.options.maxTime):
+				ts = t*self.options.slotLength
+				while len(self.load)>jW+1 and self.load[jW+1].t <= ts:
+					jW += 1
+				Workload[t] = self.load[jW].v
+		
+		# Integrate new variables
+		m.update()
+
 		# Variables
-		# var Load {t in TIME}  >= 0;
+		# Load
 		Load = {}
 		for t in range(0, self.options.maxTime):
 			Load[t] = m.addVar(lb=self.options.minSize, ub=self.options.maxSize, name="Load["+str(t)+"]")
 		if self.greenAvail != None:
-			# var LoadGreen {t in TIME}  >= 0;
 			LoadGreen = {}
 			for t in range(0, self.options.maxTime):
-				LoadGreen[t] = m.addVar(ub=self.options.maxSize, name="LoadGreen["+str(t)+"]")
+				LoadGreen[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadGreen["+str(t)+"]")
 		if self.brownPrice != None:
-			# var LoadBrown {t in TIME}  >= 0;
 			LoadBrown = {}
 			for t in range(0, self.options.maxTime):
-				LoadBrown[t] = m.addVar(ub=self.options.maxSize, name="LoadBrown["+str(t)+"]")
+				LoadBrown[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadBrown["+str(t)+"]")
+		
 		# Battery
 		if self.options.batCap > 0:
+			LoadBatt = {}
+			for t in range(-1, self.options.maxTime):
+				LoadBatt[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadBatt["+str(t)+"]")
+			# var BattGreen  {t in XTIME} >= 0;
 			if self.greenAvail != None:
-				# var BattGreen  {t in XTIME} >= 0;
 				BattGreen = {}
 				for t in range(-1, self.options.maxTime):
 					BattGreen[t] = m.addVar(name="BattGreen["+str(t)+"]")
 			if self.brownPrice != None:
-				# var BattBrown  {t in XTIME} >= 0;
 				BattBrown = {}
 				for t in range(-1, self.options.maxTime):
 					BattBrown[t] = m.addVar(name="BattBrown["+str(t)+"]")
-			# var LoadBatt   {t in XTIME} >= 0;
-			LoadBatt = {}
-			for t in range(-1, self.options.maxTime):
-				LoadBatt[t] = m.addVar(name="LoadBatt["+str(t)+"]")
-			# var CapBattery {t in XTIME} >= 0;
 			CapBattery = {}
 			for t in range(-1, self.options.maxTime):
 				CapBattery[t] = m.addVar(name="CapBattery["+str(t)+"]")
 		
 		# Peak cost
 		if self.options.peakCost != None and self.brownPrice != None:
-			PeakBrown = m.addVar(lb=0.0, ub=self.options.maxSize+self.options.batChargeRate, name="PeakBrown")
+			PeakBrown = m.addVar(lb=0.0, ub=self.options.maxSize*MaxPUE+self.options.batChargeRate, name="PeakBrown")
 			
 		# Net metering
 		if self.greenAvail != None and self.brownPrice != None:
-			# var NetGreen  {t in TIME} >= 0;
 			NetGreen = {}
 			for t in range(0, self.options.maxTime):
 				NetGreen[t] = m.addVar(name="NetGreen["+str(t)+"]")
@@ -120,27 +171,10 @@ class ParasolModel:
 				#StartJob[j.id] = m.addVar(ub=self.options.maxTime+1, vtype=GRB.INTEGER, obj=0.0, name="StartJob["+str(j.id)+"]")
 				StartJob[j.id] = m.addVar(ub=self.options.maxTime+1, vtype=GRB.INTEGER, name="StartJob["+str(j.id)+"]")
 				for t in range(0, self.options.maxTime+1+(maxLength/self.options.slotLength)):
-					LoadJob[j.id, t] = m.addVar(vtype=GRB.BINARY, name="LoadJob["+str(j.id)+","+str(t)+"]")
+					LoadJob[j.id, t] =    m.addVar(vtype=GRB.BINARY, name="LoadJob["+str(j.id)+","+str(t)+"]")
 					LoadJobIni[j.id, t] = m.addVar(vtype=GRB.BINARY, name="LoadJobIni["+str(j.id)+","+str(t)+"]")
 					LoadJobFin[j.id, t] = m.addVar(vtype=GRB.BINARY, name="LoadJobFin["+str(j.id)+","+str(t)+"]")
 
-		# Auxiliar variables for MILP constraints
-		auxvar1 = {}
-		auxbin1 = {}
-		for t in range(0, self.options.maxTime):
-			auxvar1[t] = m.addVar(name="auxvar1["+str(t)+"]")
-			auxbin1[t] = m.addVar(vtype=GRB.BINARY, name="auxbin1["+str(t)+"]")
-		auxvar2 = {}
-		auxbin2 = {}
-		for t in range(0, self.options.maxTime):
-			auxvar2[t] = m.addVar(name="auxvar2["+str(t)+"]")
-			auxbin2[t] = m.addVar(vtype=GRB.BINARY, name="auxbin2["+str(t)+"]")
-		auxvar3 = {}
-		auxbin3 = {}
-		for t in range(0, self.options.maxTime):
-			auxvar3[t] = m.addVar(name="auxvar3["+str(t)+"]")
-			auxbin3[t] = m.addVar(vtype=GRB.BINARY, name="auxbin3["+str(t)+"]")
-		
 		# Finish variables declaration
 		m.update()
 		
@@ -151,50 +185,6 @@ class ParasolModel:
 			for j in initial:
 				StartJob[j].start = initial[j]
 			m.update()
-		
-		# Parameters
-		# Green availability
-		if self.greenAvail != None:
-			GreenAvail = {}
-			jG = 0
-			for t in range(0, self.options.maxTime):
-				ts = t*self.options.slotLength
-				while len(self.greenAvail)>jG+1 and self.greenAvail[jG+1].t <= ts: jG += 1
-				GreenAvail[t] = self.greenAvail[jG].v
-		# Brown prices
-		if self.brownPrice != None:
-			BrownPrice = {}
-			jB = 0
-			for t in range(0, self.options.maxTime):
-				# Look for current values
-				ts = t*self.options.slotLength
-				while len(self.brownPrice)>jB+1 and self.brownPrice[jB+1].t <= ts: jB += 1
-				BrownPrice[t] = self.brownPrice[jB].v
-		# PUE
-		PUE = {}
-		if self.pue == None:
-			# Default PUE
-			for t in range(0, self.options.maxTime):
-				PUE[t] = 1.0
-		else:
-			jP = 0
-			for t in range(0, self.options.maxTime):
-				# Look for current values
-				ts = t*self.options.slotLength
-				while len(self.pue)>jP+1 and self.pue[jP+1].t <= ts: jP += 1
-				PUE[t] = self.pue[jP].v
-		
-		# Workload
-		if self.load != None:
-			Workload = {}
-			jW = 0
-			for t in range(0, self.options.maxTime):
-				ts = t*self.options.slotLength
-				while len(self.load)>jW+1 and self.load[jW+1].t <= ts: jW += 1
-				Workload[t] = self.load[jW].v
-		
-		# Integrate new variables
-		m.update()
 		
 		# Optimization function
 		optFunction = 0
@@ -233,7 +223,6 @@ class ParasolModel:
 		if self.options.optLoad > 0:
 			optFunction += self.options.optLoad * quicksum(Load[t] for t in range(0, self.options.maxTime))
 		if self.options.optPerf > 0:
-			# TODO we add an extra weight to avoid delay
 			# Load_down - Load_up
 			optFunction += quicksum((self.options.maxTime - t)*0.1 * (Load[t]-Workload[t]) for t in range(0, self.options.maxTime))
 
@@ -399,43 +388,25 @@ class ParasolModel:
 					aux += BattBrown[t]
 				m.addConstr(aux <= PeakBrown, "Peak["+str(t)+"]")
 			m.addConstr(self.options.previousPeak <= PeakBrown)
-				
+		
 		# Parasol constraints
-		# Constraints
+		# Constraints: We can only do one thing at a time
 		for t in range(0, self.options.maxTime):
-			# We can only do one thing at a time
-			# X > 0 => Y = 0
-			# X >= 0
-			# Y >= 0
-			# X <= bin * inf
-			# bin <= X * inf
-			# Y <= 1-bin * inf
-			# aux - Y >= 0
-			# Y - aux >= bin * -inf 
-			
-			LARGE = 99999999
 			# LoadBrown > 0  => NetGreen = 0
 			if self.brownPrice != None and self.greenAvail != None:
-				m.addConstr(LoadBrown[t] <= auxbin1[t] * LARGE, "1auxconstraint1["+str(t)+"]")
-				m.addConstr(auxbin1[t] <= LoadBrown[t] * LARGE, "1auxconstraint2["+str(t)+"]")
-				m.addConstr(NetGreen[t] <= (1-auxbin1[t]) * LARGE, "1auxconstraint3["+str(t)+"]")
-				m.addConstr(auxvar1[t] - NetGreen[t] >= 0, "1auxconstraint4["+str(t)+"]")
-				m.addConstr(NetGreen[t] - auxvar1[t] >= auxbin1[t] * -LARGE, "1auxconstraint5["+str(t)+"]")
+				self.addConstrXlt0implYeq0(m, LoadBrown[t], NetGreen[t])
 			# LoadBatt > 0  => NetGreen + BattBrown + BattGreen = 0 
 			if self.options.batCap > 0 and self.greenAvail != None:
-				auxtozero = BattGreen[t]
-				if self.brownPrice != None:
-					auxtozero += NetGreen[t] + BattBrown[t]
-				m.addConstr(LoadBatt[t] <= auxbin2[t] * LARGE, "2auxconstraint1["+str(t)+"]")
-				m.addConstr(auxbin2[t] <= LoadBatt[t] * LARGE, "2auxconstraint2["+str(t)+"]")
-				m.addConstr(auxtozero <= (1-auxbin2[t]) * LARGE, "2auxconstraint3["+str(t)+"]")
-				m.addConstr(auxvar2[t] - auxtozero >= 0, "2auxconstraint4["+str(t)+"]")
-				m.addConstr(auxtozero - auxvar2[t] >= auxbin2[t] * -LARGE, "2auxconstraint5["+str(t)+"]")
-		# Solve
+				self.addConstrXlt0implYeq0(m, LoadBatt[t],  BattGreen[t] + ((NetGreen[t] + BattBrown[t]) if self.brownPrice != None else 0))
+			# BattGreen > 0 => LoadBrown = 0
+			#if self.options.batCap > 0 and self.greenAvail != None and self.brownPrice != None:
+				#self.addConstrXlt0implYeq0(m, BattGreen[t], LoadBrown[t])
+		
 		m.update()
 		
 		#m.write('test.lp')
 		
+		# Solve
 		m.optimize()
 		
 		if m.status == GRB.status.LOADED:
@@ -539,6 +510,48 @@ class ParasolModel:
 		else:
 			return self.obj, self.sol
 
+	# X>0 => Y=0
+	# if X > 0:
+	#     Y=0
+	def addConstrXlt0implYeq0(self, m, X, Y):
+		# X >= 0; Y >= 0
+		# X <= bin * inf
+		# bin <= X * inf
+		# Y <= 1-bin * inf
+		# aux - Y >= 0
+		# Y - aux >= bin * -inf 
+		
+		# Auxiliar variables for MILP constraints
+		#auxvar = m.addVar()
+		#auxbin = m.addVar(vtype=GRB.BINARY)
+		auxvar = self.getAuxVar(m)
+		auxbin = self.getAuxBin(m)
+		
+		# New constraints
+		LARGE = 99999999
+		m.addConstr(X <= auxbin * LARGE)
+		m.addConstr(auxbin <= X * LARGE)
+		m.addConstr(Y <= (1-auxbin) * LARGE)
+		m.addConstr(auxvar - Y >= 0)
+		m.addConstr(Y - auxvar >= auxbin * -LARGE)
+	
+	# Get an auxiliary variable
+	def getAuxVar(self, m):
+		if len(self.auxvars)==0:
+			for t in range(0, self.options.maxTime):
+				self.auxvars.append(m.addVar())
+			m.update()
+		return self.auxvars.pop()
+		
+	# Get an auxiliary variable
+	def getAuxBin(self, m):
+		if len(self.auxbins)==0:
+			for t in range(0, self.options.maxTime):
+				self.auxbins.append(m.addVar(vtype=GRB.BINARY))
+			m.update()
+		return self.auxbins.pop()
+	
+	# Print the jobs in the system
 	def printJobs(self):
 		if self.jobs != None:
 			print "Jobs:"
