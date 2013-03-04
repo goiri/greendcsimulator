@@ -621,15 +621,14 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 	
 	# Lifetime battery
 	if experiment.batterylifetime != None:
-		if saveopexyear < 0:
-			fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (experiment.batterylifetime))
+		if experiment.batterylifetime < 0.1:
+			fout.write('<td align="right" width="80px"><font color="#999999">No use</font></td>\n')
+		elif saveopexyear < 0:
+			fout.write('<td align="right" width="80px"><font color="red">%.1fy</font></td>\n' % (100.0/experiment.batterylifetime))
 		elif experiment.batterylifetime >= ammortization:
-			if experiment.batterylifetime > 100:
-				fout.write('<td align="right" width="80px"><font color="#999999">No use</font></td>\n')
-			else:
-				fout.write('<td align="right" width="80px"><font color="green">%.1fy</font></td>\n' % (experiment.batterylifetime))
+			fout.write('<td align="right" width="80px"><font color="green">%.1fy</font></td>\n' % (100.0/experiment.batterylifetime))
 		else:
-			fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (experiment.batterylifetime))
+			fout.write('<td align="right" width="80px"><font color="#999999">%.1fy</font></td>\n' % (100.0/experiment.batterylifetime))
 	else:
 		fout.write('<td align="right" width="80px"><font color="#999999">&#9747;</font></td>\n')
 
@@ -648,8 +647,6 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 	else:
 		fout.write('<td align="right"><font color="#FF0000">%.1fy</font></td>\n' % ammortization)
 	fout.write('<tr/>\n')
-	
-	
 
 # Parsing
 if __name__ == "__main__":
@@ -659,7 +656,6 @@ if __name__ == "__main__":
 	expRunni = 0
 	expTotal = 0
 	for filename in sorted(os.listdir(LOG_PATH)):
-		#print LOG_PATH+filename
 		if filename.endswith('.log'):
 			# Get data from filename
 			split = filename[:-4].split('-')

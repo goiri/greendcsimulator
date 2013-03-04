@@ -101,7 +101,7 @@ class ParasolModel:
 				PUE[t] = self.pue[jP].v
 				if PUE[t] > MaxPUE:
 					MaxPUE = PUE[t]
-		PUE[-1] = PUE[0] # For battery
+		PUE[-1] = PUE[0] # Set value for the battery
 		
 		# Workload
 		if self.load != None:
@@ -133,20 +133,26 @@ class ParasolModel:
 		# Battery
 		if self.options.batCap > 0:
 			LoadBatt = {}
-			for t in range(-1, self.options.maxTime):
+			LoadBatt[-1] = 0.0
+			for t in range(0, self.options.maxTime):
 				LoadBatt[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadBatt["+str(t)+"]")
 			# var BattGreen  {t in XTIME} >= 0;
 			if self.greenAvail != None:
 				BattGreen = {}
-				for t in range(-1, self.options.maxTime):
+				BattGreen[-1] = 0.0
+				for t in range(0, self.options.maxTime):
 					BattGreen[t] = m.addVar(name="BattGreen["+str(t)+"]")
 			if self.brownPrice != None:
 				BattBrown = {}
-				for t in range(-1, self.options.maxTime):
+				BattBrown[-1] = 0.0
+				for t in range(0, self.options.maxTime):
 					BattBrown[t] = m.addVar(name="BattBrown["+str(t)+"]")
 			CapBattery = {}
-			for t in range(-1, self.options.maxTime):
-				CapBattery[t] = m.addVar(name="CapBattery["+str(t)+"]")
+			CapBattery[-1] = self.options.batIniCap
+			if CapBattery[-1] > self.options.batCap:
+				CapBattery[-1] = self.options.batCap
+			for t in range(0, self.options.maxTime):
+				CapBattery[t] = m.addVar(ub=self.options.batCap, name="CapBattery["+str(t)+"]")
 		
 		# Peak cost
 		if self.options.peakCost != None and self.brownPrice != None:
@@ -196,11 +202,11 @@ class ParasolModel:
 					aux += BattBrown[t]
 				if self.greenAvail != None and self.options.netMeter!=None:
 					aux += -self.options.netMeter*NetGreen[t]
-				optFunction += -self.options.optCost * aux * BrownPrice[t]/1000.0
+				optFunction += -self.options.optCost * aux * BrownPrice[t]#/1000.0
 			# Add peak power cost in a linear way
 			if self.options.peakCost != None:
 				#optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
-				optFunction += -self.options.optCost * (PeakBrown)/1000.0/30 * self.options.peakCost # Account the month for just one day
+				optFunction += -self.options.optCost * PeakBrown/30 * self.options.peakCost # Account the month for just one day # /1000.0
 		if self.options.optBat > 0 and self.options.batCap > 0:
 			for t in range(0, self.options.maxTime):
 				aux = 0
@@ -329,22 +335,13 @@ class ParasolModel:
 		
 		# Battery
 		if self.options.batCap > 0:
-			# s.t. IniBattery :                CapBattery[-1] = 0;
-			# s.t. IniBatteryL :               LoadBatt[-1]   = 0;
-			# s.t. MaxBattery {t in TIME} :    CapBattery[t] <= self.options.batCap);
-			# s.t. CapBatteryT {t in TIME} :   LoadBatt[t] <= CapBattery[t];
-			m.addConstr(CapBattery[-1] == self.options.batIniCap, "IniBattery")
-			m.addConstr(LoadBatt[-1] == 0, "IniBatteryL")
+			# There seems to be a bug in Gurobi. If the initial battery is the maximum, it breaks
+			if CapBattery[-1] == self.options.batCap:
+				CapBattery[-1] -= 0.001
+			# We cannot discharge more than available
 			for t in range(0, self.options.maxTime):
-				m.addConstr(CapBattery[t] <= self.options.batCap, "MaxBattery["+str(t)+"]")
 				m.addConstr(LoadBatt[t] <= CapBattery[t], "CapBatteryT["+str(t)+"]")
-			if self.greenAvail != None:
-				# s.t. IniBatteryG :               BattGreen[-1]  = 0;
-				m.addConstr(BattGreen[-1] == 0, "IniBatteryG")
-			if self.brownPrice != None:
-				# s.t. IniBatteryB :               BattBrown[-1]  = 0;
-				m.addConstr(BattBrown[-1] == 0, "IniBatteryB")
-			# s.t. ChargeBattery {t in TIME} : CapBattery[t] = CapBattery[t-1] + "+str(batFactor)+" * (BattGreen[t-1] + BattBrown[t-1]) - LoadBatt[t-1];
+			# Charge battery
 			for t in range(0, self.options.maxTime):
 				aux = 0
 				if self.brownPrice != None:
@@ -362,25 +359,28 @@ class ParasolModel:
 					if self.brownPrice != None:
 						aux += BattBrown[t]
 					m.addConstr(aux <= self.options.batChargeRate, "BattRate["+str(t)+"]")
-			# Maximum depth of discharge to enlarge battery
+			# Maximum depth of discharge (to extend battery lfietime)
 			if self.options.batDischargeMax != None:
+				minPercentage = 1.0 - self.options.batDischargeMax
+				# Adapt DoD taking into account initial capacity
+				if CapBattery[-1]/self.options.batCap < minPercentage:
+					minPercentage = CapBattery[-1]/self.options.batCap
+				# System protection: it is usually 15%+10% = 25%
+				if self.options.batDischargeProtection != None:
+					if self.options.batDischargeProtection > minPercentage:
+						minPercentage = self.options.batDischargeProtection
+				# Depth of discharge
 				for t in range(0, self.options.maxTime):
-					m.addConstr(CapBattery[t] >= self.options.batCap*(1-self.options.batDischargeMax), "Batt["+str(t)+"]")
-			# System protection: usually 15+10 = 25%
+					#m.addConstr(CapBattery[t] >= self.options.batCap*(1.0 - batDischargeMax), "Batt["+str(t)+"]")
+					m.addConstr(CapBattery[t] >= self.options.batCap*minPercentage, "Batt["+str(t)+"]")
+			'''
+			# System protection: it is usually 15%+10% = 25%
 			if self.options.batDischargeProtection != None:
 				for t in range(0, self.options.maxTime):
 					m.addConstr(CapBattery[t] >= self.options.batCap*self.options.batDischargeProtection, "BattProtection["+str(t)+"]")
+			'''
 		
 		# Peak cost constraints
-		"""
-		if peak != None:
-			if self.brownPrice != None:
-				for t in range(0, self.options.maxTime):
-					aux = LoadBrown[t]
-					if self.options.batCap > 0:
-						aux += BattBrown[t]
-					m.addConstr(aux <= peak, "Peak["+str(t)+"]")
-		"""
 		if self.options.peakCost != None and self.brownPrice != None:
 			for t in range(0, self.options.maxTime):
 				aux = LoadBrown[t]
@@ -401,6 +401,9 @@ class ParasolModel:
 			# BattGreen > 0 => LoadBrown = 0
 			#if self.options.batCap > 0 and self.greenAvail != None and self.brownPrice != None:
 				#self.addConstrXlt0implYeq0(m, BattGreen[t], LoadBrown[t])
+			# BattGreen > 0 => NetGreen = 0
+			#if self.options.batCap > 0 and self.greenAvail != None and self.brownPrice != None:
+				#self.addConstrXlt0implYeq0(m, BattGreen[t] + BattBrown[t], NetGreen[t])
 		
 		m.update()
 		
@@ -528,7 +531,7 @@ class ParasolModel:
 		auxbin = self.getAuxBin(m)
 		
 		# New constraints
-		LARGE = 99999999
+		LARGE = 99999
 		m.addConstr(X <= auxbin * LARGE)
 		m.addConstr(auxbin <= X * LARGE)
 		m.addConstr(Y <= (1-auxbin) * LARGE)
@@ -826,6 +829,7 @@ if __name__=='__main__':
 	start = datetime.now()
 	
 	# Input parameters
+	'''
 	jobs = None
 	greenAvail = None
 	brownPrice = None
@@ -847,10 +851,12 @@ if __name__=='__main__':
 	# Shift
 	#tv = TimeValue(10, 0)
 	#for tv in greenAvail:
-		#tv.t = tv.t-(12*3600)	
+		#tv.t = tv.t-(12*3600)
+	'''
 	
 	# Solve model
 	solver = ParasolModel()
+	'''
 	solver.options.optCost = 1.0
 	solver.options.output = 'out3.data'
 	solver.options.loadDelay = True
@@ -877,7 +883,23 @@ if __name__=='__main__':
 	solver.options.optPerf = 1.0
 	
 	secondsdelay = 20*3600
+	'''
+	solver.options.optCost = 1.0
+	solver.options.loadDelay = False
+	solver.options.compression =  3.0
+	solver.options.minSize =  310.0
+	solver.options.maxSize =  1830.0
+	solver.options.netMeter = 0.4
+	solver.options.batEfficiency = 0.87
+	solver.options.batCap = 400.0
+	solver.options.batIniCap = 378.731858069
+	solver.options.batDischargeMax = 0.29326171875
+	solver.options.prevLoad = 0.0
+	solver.options.previousPeak = 1803.15863909
+	solver.options.peakCost = 5.59
+	solver.options.minSizeIni = 355.904761905
 	
+	'''
 	# Define input parameters
 	greenAvail = [TimeValue(0,1685.00),TimeValue(3600,1597.11),TimeValue(2*3600,1710.79),TimeValue(3*3600,1586.00),TimeValue(14400,1342.94),
 		TimeValue(18000,1025.41),TimeValue(21600,675.72),TimeValue(25200,325.64),TimeValue(28800,76.17),TimeValue(32400,3.37),
@@ -943,12 +965,114 @@ if __name__=='__main__':
 	secs += int(time[5])     # seconds
 	#secs = secs % (24*60*60)
 	for tv in workload:
-		tv.t -= secondsdelay	
+		tv.t -= secondsdelay
+	'''
+	
+	# DEBUGGING
+	greenAvail = [TimeValue(0, 156.256161), 
+		TimeValue(3600, 53.322492), 
+		TimeValue(7200, 5.420144), 
+		TimeValue(10800, 0.000000), 
+		TimeValue(14400, 0.000000), 
+		TimeValue(18000, 0.000000), 
+		TimeValue(21600, 0.000000), 
+		TimeValue(25200, 0.000000), 
+		TimeValue(28800, 0.000000), 
+		TimeValue(32400, 0.000000), 
+		TimeValue(36000, 0.000000), 
+		TimeValue(39600, 0.000000), 
+		TimeValue(43200, 0.000000), 
+		TimeValue(46800, 0.000000), 
+		TimeValue(50400, 0.000000), 
+		TimeValue(54000, 0.000000), 
+		TimeValue(57600, 20.806218), 
+		TimeValue(61200, 269.777740), 
+		TimeValue(64800, 532.262111), 
+		TimeValue(68400, 858.256000), 
+		TimeValue(72000, 1165.552000), 
+		TimeValue(75600, 1205.904000), 
+		TimeValue(79200, 913.352000), 
+		TimeValue(82800, 588.984000)]
+	brownPrice = [TimeValue(0, 0.117500), 
+		TimeValue(3600, 0.117500), 
+		TimeValue(7200, 0.117500), 
+		TimeValue(10800, 0.117500), 
+		TimeValue(14400, 0.117500), 
+		TimeValue(18000, 0.117500), 
+		TimeValue(21600, 0.117500), 
+		TimeValue(25200, 0.117500), 
+		TimeValue(28800, 0.080017), 
+		TimeValue(32400, 0.080017), 
+		TimeValue(36000, 0.080017), 
+		TimeValue(39600, 0.080017), 
+		TimeValue(43200, 0.080017), 
+		TimeValue(46800, 0.080017), 
+		TimeValue(50400, 0.080017), 
+		TimeValue(54000, 0.080017), 
+		TimeValue(57600, 0.080017), 
+		TimeValue(61200, 0.080017), 
+		TimeValue(64800, 0.117500), 
+		TimeValue(68400, 0.117500), 
+		TimeValue(72000, 0.117500), 
+		TimeValue(75600, 0.117500), 
+		TimeValue(79200, 0.117500), 
+		TimeValue(82800, 0.117500)]
+	puePredi = [TimeValue(0, 1.050000), 
+		TimeValue(3600, 1.050000), 
+		TimeValue(7200, 1.050000), 
+		TimeValue(10800, 1.050000), 
+		TimeValue(14400, 1.050000), 
+		TimeValue(18000, 1.050000), 
+		TimeValue(21600, 1.050000), 
+		TimeValue(25200, 1.050000), 
+		TimeValue(28800, 1.050000), 
+		TimeValue(32400, 1.050000), 
+		TimeValue(36000, 1.050000), 
+		TimeValue(39600, 1.050000), 
+		TimeValue(43200, 1.050000), 
+		TimeValue(46800, 1.050000), 
+		TimeValue(50400, 1.050000), 
+		TimeValue(54000, 1.050000), 
+		TimeValue(57600, 1.050000), 
+		TimeValue(61200, 1.050000), 
+		TimeValue(64800, 1.050000), 
+		TimeValue(68400, 1.050000), 
+		TimeValue(72000, 1.050000), 
+		TimeValue(75600, 1.050000), 
+		TimeValue(79200, 1.050000), 
+		TimeValue(82800, 1.050000)]
+	worklPredi = [TimeValue(0, 1587.667980), 
+		TimeValue(3600, 538.350138), 
+		TimeValue(7200, 1484.399222), 
+		TimeValue(10800, 1218.777024), 
+		TimeValue(14400, 1535.053962), 
+		TimeValue(18000, 1059.321694), 
+		TimeValue(21600, 984.489976), 
+		TimeValue(25200, 539.379731), 
+		TimeValue(28800, 342.448702), 
+		TimeValue(32400, 901.935843), 
+		TimeValue(36000, 930.592360), 
+		TimeValue(39600, 668.784686), 
+		TimeValue(43200, 1191.129461), 
+		TimeValue(46800, 1113.231555), 
+		TimeValue(50400, 850.157380), 
+		TimeValue(54000, 1323.537361), 
+		TimeValue(57600, 1428.613325), 
+		TimeValue(61200, 1403.173832), 
+		TimeValue(64800, 1561.361553), 
+		TimeValue(68400, 772.417157), 
+		TimeValue(72000, 347.699547), 
+		TimeValue(75600, 958.668721), 
+		TimeValue(79200, 748.801940), 
+		TimeValue(82800, 1006.636496)]
+	stateChargeBattery = False
+	stateNetMeter = False
 	
 	#solver.options.batDischargeMax = 1.0
 	tnow = datetime.now()
 	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload)
-	obj, sol = solver.solvePeak(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, stateChargeBattery=False)
+	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, stateChargeBattery=False)
+	obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
 	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, stateChargeBattery=False)
 	print datetime.now()-tnow
 	

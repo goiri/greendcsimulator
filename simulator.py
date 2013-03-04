@@ -174,7 +174,6 @@ class Simulator:
 			temperature = self.location.getTemperature(time)
 			#coolingpower = self.infra.cooling.getPower(temperature)
 			pue = self.infra.cooling.getPUE(temperature)
-			netmetering = self.location.netmetering
 			
 			# Green power
 			solar = self.location.getSolar(time)
@@ -197,9 +196,6 @@ class Simulator:
 				solver.options.peakCost = self.location.brownpowerprice[time]
 				# Battery
 				solver.options.batIniCap = battery
-				# Adapt DoD taking into account current capacity
-				if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap < (1.0-solver.options.batDischargeMax):
-					solver.options.batDischargeMax = 1.0 - solver.options.batIniCap/solver.options.batCap + 0.01
 				# Covering subset workload
 				reqNodes = self.workload.getLoad(time)*numServers
 				coveringPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff) + prevLoad/solver.options.compression
@@ -286,9 +282,20 @@ class Simulator:
 					brownpower = 0.0
 				# Use batteries if we can
 				if brownpower > 0.0:
-					if solver.options.batCap > 0.0 and solver.options.batIniCap/solver.options.batCap > (1.0-solver.options.batDischargeMax):
-						batdischarge += brownpower
-						brownpower = 0.0
+					if solver.options.batCap > 0.0:
+						# Calculate the battery percentage we can discharge
+						batdischargeavail = (solver.options.batIniCap/solver.options.batCap) - (1.0-solver.options.batDischargeMax)
+						# Transform it into power (% -> Wh -> W)
+						batdischargeavail = batdischargeavail * solver.options.batCap * (3600.0/TIMESTEP)
+						# Check negative
+						if batdischargeavail < 0.0:
+							batdischargeavail = 0.0
+						# Brown power -> Battery discharge
+						batdischarge = batdischargeavail
+						if brownpower < batdischarge:
+							batdischarge = brownpower
+						# Update brown power
+						brownpower -= batdischarge
 				# Load
 				execload = workload
 			else:
@@ -311,7 +318,7 @@ class Simulator:
 				batdischarge = sol['LoadBatt[0]']
 				batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
 				load = sol['LoadBrown[0]'] + sol['LoadGreen[0]'] + sol['LoadBatt[0]']
-				
+								
 				# Delay load
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
@@ -325,8 +332,11 @@ class Simulator:
 						prevLoad = 0.0
 				
 				# Fix solution to match the actual system (Parasol)
+				'''
 				# Sometimes the solver says to run more than the load we have there
 				if execload > workload+prevLoad:
+					print 'We are running more than what we actually have'
+					print execload, workload, prevLoad # TODO
 					surplus = execload - (workload+prevLoad)
 					execload -= surplus
 					brownpower -= surplus
@@ -339,8 +349,17 @@ class Simulator:
 								netpower += -batdischarge
 							batdischarge = 0.0
 						brownpower = 0.0
+				print execload, workload, prevLoad # TODO
+				'''
 				# If we charge, we cannot do net metering at the same time
 				if batcharge > 0.0 and netpower > 0.0:
+					'''
+					print 'Error: charging battery and net metering at the same time.'
+					print 'Time:', timeStr(time)
+					print 'Battery: %.1f%%' % (100.0*battery/solver.options.batCap)
+					print 'Battery charge: %.1fW' % batcharge
+					print 'Net metering: %.1fW' % netpower
+					'''
 					batcharge += netpower
 					netpower = 0.0
 				# If we are using less than what the solver gave us, adjust it
@@ -371,38 +390,84 @@ class Simulator:
 					if batdischarge == 0.0 and brownpower == 0.0:
 						# If we are charging, charge more
 						if batcharge > 0.0 or stateChargeBattery:
-							batcharge += greenpower - execload*pue
+							batcharge = greenpower - execload*pue
 							print 'Adjust battery charge: %.1fW' % batcharge 
 						# Otherwise, just net meter
 						else:
-							netpower += greenpower - execload*pue
+							netpower = greenpower - execload*pue
 							print 'Adjust net metering: %.1fW' % netpower
 					
 					print 'Solution at', timeStr(time), 'was:'
-					print ' Green    ', greenAvail[0]
-					print ' Workload ', worklPredi[0]
-					print ' PUE      ', puePredi[0]
-					print ' Brown    ', brownPrice[0]
-					print ' Load     ', sol['Load[0]']
-					print ' Workload ', sol['Workload[0]']
-					print ' BPrice   ', sol['BrownPrice[0]']
+					print ' Green     ', greenAvail[0]
+					print ' Workload  ', worklPredi[0]
+					print ' PUE       ', puePredi[0]
+					print ' Brown     ', brownPrice[0]
+					print ' Load      ', sol['Load[0]']
+					print ' Workload  ', sol['Workload[0]']
+					print ' BPrice    ', sol['BrownPrice[0]']
 					
-					print ' LoadBrown', sol['LoadBrown[0]']
-					print ' LoadBatt ', sol['LoadBatt[0]']
-					print ' LoadGreen', sol['LoadGreen[0]']
+					print ' LoadBrown ', sol['LoadBrown[0]']
+					print ' LoadBatt  ', sol['LoadBatt[0]']
+					print ' LoadGreen ', sol['LoadGreen[0]']
 					
-					print ' BattBrown',  sol['BattBrown[0]']
-					print ' BattGreen',  sol['BattGreen[0]']
-					print ' CapBattery', sol['CapBattery[0]']
+					print ' PrevLoad  ',  prevLoad
 					
-					print ' NetGreen',  sol['NetGreen[0]']
+					print ' BattBrown ',  sol['BattBrown[0]']
+					print ' BattGreen ',  sol['BattGreen[0]']
+					print ' CapBattery',  sol['CapBattery[0]']
 					
-					print ' PeakBrown',  sol['PeakBrown']
+					print ' NetGreen  ',  sol['NetGreen[0]']
+					
+					print ' PeakBrown ',  sol['PeakBrown']
+			
+			'''
+			if timeStr(time) == '2d15h45m':
+				print 'Input at', timeStr(time), 'was:'
+				print ' Green    ', greenAvail[0]
+				print ' Workload ', worklPredi[0]
+				print ' PUE      ', puePredi[0]
+				print ' Brown    ', brownPrice[0]
+				
+				print 'Brown'
+				for tv in brownPrice:
+					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
+				print 'Green'
+				for tv in greenAvail:
+					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
+				print 'PUE'
+				for tv in puePredi:
+					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
+				print 'Workload'
+				for tv in worklPredi:
+					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
+				print stateChargeBattery
+				print stateNetMeter
+				
+				print 'Options'
+				print solver.options.optCost
+				print solver.options.loadDelay
+				print solver.options.compression
+				print solver.options.minSize
+				print solver.options.maxSize
+				print solver.options.netMeter
+				print solver.options.batEfficiency
+				print solver.options.batCap
+				print solver.options.batDischargeMax
+				print solver.options.prevLoad
+				print solver.options.previousPeak
+				print solver.options.peakCost
+				print solver.options.batIniCap
+				print solver.options.batDischargeMax
+				print solver.options.minSizeIni
+			'''
 			
 			# Charge/discharge battery
 			battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
 			if battery > self.infra.battery.capacity:
 				battery = self.infra.battery.capacity
+			if battery < solver.options.batCap*solver.options.batDischargeProtection:
+				print 'Error: The battery was discharged further than the protection limit.'
+				battery = solver.options.batCap*solver.options.batDischargeProtection
 			
 			# Account battery lifetime
 			if self.infra.battery.capacity > 0.0:
@@ -435,7 +500,7 @@ class Simulator:
 				prevbatlevel = batlevel
 			
 				# Change DoD based on battery lifetime projections (every 5 days)
-				if self.batteryManagement and time % parseTime('5d') == 0:
+				if self.batteryManagement and time>0 and time%parseTime('5d') == 0:
 					# Calculate battery lifetime by this time
 					projbatlifetime = 100.0*time/(self.infra.battery.lifetimemax*365*24*60*60)
 					if batlifetime < projbatlifetime:
@@ -447,7 +512,6 @@ class Simulator:
 						solver.options.batDischargeMax = 0.50
 					if solver.options.batDischargeMax < 0.00:
 						solver.options.batDischargeMax = 0.00
-					
 			
 			# Update state
 			if batcharge > 0.0:
@@ -467,12 +531,21 @@ class Simulator:
 			# Grid electricity
 			costbrownenergy += (TIMESTEP/SECONDS_HOUR) * brownpower/1000.0 * brownenergyprice # (seconds -> hours) * kW * $/kWh
 			# Net metering
-			costbrownenergy -= (TIMESTEP/SECONDS_HOUR) * netpower/1000.0 * brownenergyprice * netmetering # (seconds -> hours) * kW * $/kWh * %
+			costbrownenergy -= (TIMESTEP/SECONDS_HOUR) * netpower/1000.0 *   brownenergyprice * self.location.netmetering # (seconds -> hours) * kW * $/kWh * %
+			
+			'''
+			print timeStr(time), (startdate + timedelta(seconds=time)).month
+			print 'Brown:', brownpower, brownenergyprice, (TIMESTEP/SECONDS_HOUR) * brownpower/1000.0 * brownenergyprice # (seconds -> hours) * kW * $/kWh
+			print 'Net:',   netpower, brownenergyprice, (TIMESTEP/SECONDS_HOUR) * netpower/1000.0 * brownenergyprice * self.location.netmetering # (seconds -> hours) * kW * $/kWh * %
+			print 'Peak:',  peakbrown, self.location.brownpowerprice[time+24*60*60], self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
+			print 'Energy cost:', costbrownenergy
+			print 'Power cost: ', costbrownpower
+			'''
 			
 			# Peak power accounting every month
 			if (startdate + timedelta(seconds=time)).month != currentmonth:
 				costbrownpower += self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
-				# Reseat accounting
+				# Reset accounting
 				peakbrown = 0.0
 				currentmonth = (startdate + timedelta(seconds=time)).month
 			
