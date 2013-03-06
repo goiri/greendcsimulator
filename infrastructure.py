@@ -18,11 +18,11 @@ class WindTurbines:
 
 # Energy storage
 class Batteries:
-	def __init__(self, capacity=0, efficiency=0.85, lifetimedata='data/leadacid.battery'):
+	def __init__(self, capacity=0, efficiency=0.85, lifetimemax=4.0, lifetimedata='data/leadacid.battery'):
 		self.capacity = capacity # Wh
 		self.efficiency = efficiency # %
+		self.lifetimemax = lifetimemax
 		self.lifetime = None
-		self.lifetimemax = 5.0 # 5 years
 		if lifetimedata != None:
 			self.lifetime = self.readBatteryLifetimeProfile(lifetimedata)
 	
@@ -122,8 +122,11 @@ class Switch:
 								self.poweridle = float(value)
 							elif key.startswith('power.peak'):
 								self.powerpeak = float(value)
+
+# Model an IT rack with one switch and multiple servers
 class Rack:
 	def __init__(self):
+		self.number = 1
 		self.servernum = 0
 		self.servertype = None
 		self.servers = {}
@@ -136,18 +139,60 @@ class Rack:
 				server = Server()
 				server.read(self.servertype)
 				self.servers[i] = server
+	
+	# Get the number of servers of a rack
+	def getNumServers(self):
+		return len(self.servers)
+	
+	# Get the power consumption of a rack depending on the number of servers used
+	def getPower(self, numServers, minimum=0, turnoff=True):
+		power = 0.0
+		auxminimum = minimum
+		reqServers = numServers
+		
+		# Add switch power
+		rackUtilization = 1.0
+		if reqServers < len(self.servers):
+			rackUtilization = math.ceil(reqServers) / float(len(self.servers))
+		powerSwitchIdle = self.switch.poweridle
+		powerSwitchPeak = self.switch.powerpeak
+		power += powerSwitchIdle + rackUtilization*(powerSwitchPeak - powerSwitchIdle)
+		
+		# Walk the servers in the rack
+		for serverId in self.servers:
+			# Add server power
+			if reqServers >= 1:
+				power += self.servers[serverId].powerpeak
+				reqServers -= 1
+				auxminimum -= 1
+			elif reqServers > 0:
+				power += self.servers[serverId].poweridle + reqServers*(self.servers[serverId].powerpeak-self.servers[serverId].poweridle)
+				reqServers -= 1
+				auxminimum -= 1
+			elif auxminimum > 0:
+				power += self.servers[serverId].poweridle
+				auxminimum -= 1
+			elif turnoff == False:
+				power += self.servers[serverId].poweridle
+			else:
+				power += self.servers[serverId].powers3
+		return power
 
 class IT:
 	def __init__(self):
 		self.racks = {}
-		
+	
+	# Get the number of servers in the system
 	def getNumServers(self):
 		numServers = 0
 		for rackId in sorted(self.racks.keys()):
+			rackServers = 0
 			for serverId in self.racks[rackId].servers:
-				numServers += 1
+				rackServers += 1
+			numServers += rackServers * self.racks[rackId].number
 		return numServers
 	
+	# Get the power if everything is running full blast
 	def getMaxPower(self):
 		return self.getPower(self.getNumServers())
 	
@@ -172,32 +217,43 @@ class IT:
 		
 		# Walk the racks
 		for rackId in sorted(self.racks.keys()):
-			# Add switch power
-			rackUtilization = 1.0
-			if reqServers < len(self.racks[rackId].servers):
-				rackUtilization = math.ceil(reqServers) / float(len(self.racks[rackId].servers))
-			powerSwitchIdle = self.racks[rackId].switch.poweridle
-			powerSwitchPeak = self.racks[rackId].switch.powerpeak
-			power += powerSwitchIdle + rackUtilization*(powerSwitchPeak - powerSwitchIdle)
+			'''
+			if self.racks[rackId].number > 1:
+			'''
+			# Calculate the number of required racks
+			numRackServers = self.racks[rackId].getNumServers()
+			reqRacks = float(reqServers)/float(numRackServers)
+			if reqRacks > self.racks[rackId].number:
+				reqRacks = self.racks[rackId].number
+				
+			# Racks at full power
+			maxRackPower = self.racks[rackId].getPower(numRackServers, turnoff=turnoff)
+			power += math.floor(reqRacks) * maxRackPower
+			reqServers -= math.floor(reqRacks) * numRackServers
+			auxminimum -= math.floor(reqRacks) * numRackServers
 			
-			# Walk the servers in the rack
-			for serverId in self.racks[rackId].servers:
-				# Add server power
-				if reqServers >= 1:
-					power += self.racks[rackId].servers[serverId].powerpeak
-					reqServers -= 1
-					auxminimum -= 1
-				elif reqServers > 0:
-					power += self.racks[rackId].servers[serverId].poweridle + reqServers*(self.racks[rackId].servers[serverId].powerpeak-self.racks[rackId].servers[serverId].poweridle)
-					reqServers -= 1
-					auxminimum -= 1
-				elif auxminimum > 0:
-					power += self.racks[rackId].servers[serverId].poweridle
-					auxminimum -= 1
-				elif turnoff == False:
-					power += self.racks[rackId].servers[serverId].poweridle
-				else:
-					power += self.racks[rackId].servers[serverId].powers3
+			# If we haven't use all the racks
+			if math.floor(reqRacks) < self.racks[rackId].number:
+				# The rack in between
+				if reqServers > 0:
+					power += self.racks[rackId].getPower(reqServers, minimum=auxminimum, turnoff=turnoff)
+					reqServers -= reqServers
+					auxminimum -= numRackServers
+					if auxminimum < 0:
+						auxminimum = 0
+				
+				# Racks with minimum power
+				racksToGo = self.racks[rackId].number - math.floor(reqRacks)
+				if auxminimum > 0:
+					power += math.floor(auxminimum/numRackServers) * self.racks[rackId].getPower(0, minimum=numRackServers, turnoff=turnoff)
+					if auxminimum%numRackServers > 0:
+						power += self.racks[rackId].getPower(0, minimum=(auxminimum%numRackServers), turnoff=turnoff)
+					racksToGo -= math.ceil(auxminimum/numRackServers)
+				
+				# Racks completely off
+				if racksToGo > 0:
+					minRackPower = self.racks[rackId].getPower(0, minimum=0, turnoff=turnoff)
+					power += racksToGo * minRackPower
 		return power
 	
 	"""
@@ -300,6 +356,7 @@ class Infrastructure:
 	# Initialize from file
 	def __init__(self, filename=None):
 		# Default values
+		self.price = None
 		self.solar = SolarPanels()
 		self.wind = WindTurbines()
 		self.battery = Batteries()
@@ -341,9 +398,17 @@ class Infrastructure:
 								self.battery.efficiency = float(value)
 							elif key.startswith('battery.price'):
 								self.battery.price = float(value)
+							elif key.startswith('battery.lifetime'):
+								self.battery.lifetimemax = float(value)
+							elif key.startswith('battery.type'):
+								self.battery.readBatteryLifetimeProfile(DATA_PATH+value+'.battery')
 						# Cooling
 						elif key.startswith('cooling'):
 							self.cooling.read(value)
+						# Cooling
+						elif key.startswith('price'):
+							if float(value) > 0.0:
+								self.price = float(value)
 						# IT
 						elif key.startswith('it'):
 							# Parse racks
@@ -364,9 +429,26 @@ class Infrastructure:
 								if key.startswith('it.'+rackId+'.switch.type'):
 									self.it.racks[rackId].switch = Switch()
 									self.it.racks[rackId].switch.read(value)
+							# Number
+							elif key.startswith('it.'+rackId+'.number'):
+								# Copy the rack N times
+								self.it.racks[rackId].number = int(value)
+								
 		# Initialize everything
-		for rackId in self.it.racks:
+		for rackId in self.it.racks.keys():
 			self.it.racks[rackId].initServers()
+			
+		# Expand servers
+		'''
+		for rackId in self.it.racks.keys():
+			numRacks = self.it.racks[rackId].number
+			if numRacks > 1:
+				self.it.racks[rackId].number = 1
+				rack = self.it.racks[rackId]
+				for i in range(0, numRacks):
+					self.it.racks['%s-%05d' % (rackId, i)] = rack
+			del self.it.racks[rackId]
+		'''
 	
 	# Intrastructure summary
 	def printSummary(self):
@@ -379,11 +461,12 @@ class Infrastructure:
 			print '\tBatteries:    ', energyStr(self.battery.capacity)
 		print '\tIT:'
 		for rackId in sorted(self.it.racks):
-			print '\t\t', rackId, len(self.it.racks[rackId].servers), 'servers'
+			print '\t\t', self.it.racks[rackId].number, rackId, 'x', len(self.it.racks[rackId].servers), '=', self.it.racks[rackId].number*len(self.it.racks[rackId].servers), 'servers'
 
 # Main program
 if __name__ == "__main__":
 	infra = Infrastructure('data/parasol.infra')
+	infra.printSummary()
 	
 	# Testing cooling
 	for outtemp in range(15, 38):
@@ -403,3 +486,21 @@ if __name__ == "__main__":
 	print 20, power, infra.it.getNodes(power, minimum=0)
 	print 64, infra.it.getMaxPower(), infra.it.getNodes(infra.it.getMaxPower(), minimum=0)
 	
+	# Test large infrastructure
+	from datetime import datetime
+	
+	t0 = datetime.now()
+	
+	infra = Infrastructure('data/large.infra')
+	infra.printSummary()
+	
+	print 'Servers:     ', infra.it.getNumServers()
+	print '0 nodes (0): ', infra.it.getPower(0, minimum=0), 'W'
+	print '0 nodes (10):', infra.it.getPower(0, minimum=10), 'W'
+	print '20 nodes:    ', powerStr(infra.it.getPower(20, minimum=10))
+	print '1000 nodes:  ', powerStr(infra.it.getPower(1000, minimum=10))
+	print '20000 nodes: ', powerStr(infra.it.getPower(20000, minimum=10))
+	print '200000 nodes:', powerStr(infra.it.getPower(200000, minimum=10))
+	print '203600 nodes:', powerStr(infra.it.getPower(203600, minimum=10))
+	print 'Peak: %s' % powerStr(infra.it.getMaxPower())
+	print datetime.now()-t0

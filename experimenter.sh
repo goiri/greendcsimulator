@@ -39,12 +39,12 @@ if [ $# -ge 1 ]; then
 fi
 
 if true; then
-	for ALWAYSON in "" "--alwayson"; do
+	for ALWAYSON in ""; do # for ALWAYSON in "" "--alwayson"; do
 		for LOCATION in $LOCATIONS; do
 			for WORKLOAD in $WORKLOADS; do
 				for DELAY in "--delay" ""; do
 					for SOLAR in $SOLARS; do
-						for BATTERY in 0 32000 8000 16000 24000; do
+						for BATTERY in 0 32000 800 8000 16000 24000; do
 							# Wait for empty slots
 							if [ $NUMTHREADS -ge $MAXTHREADS ]; then
 								# We have filled all the threads, wait for them to finish

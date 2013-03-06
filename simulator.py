@@ -83,6 +83,7 @@ class Simulator:
 		costbrownpower = 0.0
 		# Peak brown
 		peakbrown = 0.0
+		peakbrownlife = 0.0
 		# Store start date for peak brown accounting
 		startdate = datetime(2013, 1, 1)
 		currentmonth = 1
@@ -193,6 +194,7 @@ class Simulator:
 				#solver.options.previousPeak = 0.95*peakbrown
 				#solver.options.previousPeak = 0.85*peakbrown
 				#solver.options.previousPeak = 0.0
+				solver.options.previousPeakLife = peakbrownlife
 				solver.options.peakCost = self.location.brownpowerprice[time]
 				# Battery
 				solver.options.batIniCap = battery
@@ -526,6 +528,8 @@ class Simulator:
 			# Check peak brown power
 			if brownpower > peakbrown:
 				peakbrown = brownpower
+			if brownpower > peakbrownlife:
+				peakbrownlife = brownpower
 			
 			# Account operational costs
 			# Grid electricity
@@ -544,7 +548,7 @@ class Simulator:
 			
 			# Peak power accounting every month
 			if (startdate + timedelta(seconds=time)).month != currentmonth:
-				costbrownpower += self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
+				costbrownpower += self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0
 				# Reset accounting
 				peakbrown = 0.0
 				currentmonth = (startdate + timedelta(seconds=time)).month
@@ -555,16 +559,21 @@ class Simulator:
 				fout.flush()
 		
 		# Account for the last month
-		costbrownpower += self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
+		costbrownpower += self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0
+		
+		# Datacenter cost
+		costdatacenter = 0.0
+		if self.infra.price != None:
+			costdatacenter += peakbrownlife * self.infra.price
 		
 		# Infrastructure cost (lifetime)
-		costinfrastructure = 0.0
+		costinfrastructure = costdatacenter
 		costinfrastructure += self.infra.solar.capacity * self.infra.solar.price # Solar
 		costinfrastructure += self.infra.wind.capacity * self.infra.wind.price # Wind
 		costinfrastructure += self.infra.battery.capacity * self.infra.battery.price * TOTAL_YEARS/self.infra.battery.lifetimemax # Battery
 		
 		# Infrastructure cost (first)
-		costinfrastructurefirst = 0.0
+		costinfrastructurefirst = costdatacenter
 		costinfrastructurefirst += self.infra.solar.capacity * self.infra.solar.price # Solar
 		costinfrastructurefirst += self.infra.wind.capacity * self.infra.wind.price # Wind
 		costinfrastructurefirst += self.infra.battery.capacity * self.infra.battery.price # Battery
@@ -576,6 +585,7 @@ class Simulator:
 			fout.write('# Summary:\n')
 			fout.write('# Brown energy: $%.2f\n' % (costbrownenergy))
 			fout.write('# Peak brown power: $%.2f\n' % (costbrownpower))
+			fout.write('# Peak brown power life: $%.2f (%.2fW)\n' % (costdatacenter, peakbrownlife))
 			fout.write('# Infrastructure: $%.2f ($%.2f)\n' % (costinfrastructure, costinfrastructurefirst))
 			fout.write('# Battery number discharges: %d\n' % (batnumdischarges))
 			fout.write('# Battery max discharge: %.2f%%\n' % (batmaxdischarge))

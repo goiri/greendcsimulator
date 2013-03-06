@@ -10,9 +10,13 @@ wind.price = 1.5 # $1500/kW -> $1.5/W
 battery.capacity = 32000 # 32kWh
 battery.efficiency = 0.87 # 87%
 battery.price = 0.213 # $0.213/Wh
+battery.lifetime = 4 # years
+battery.type = leadacid
 
 # Cooling
 cooling = parasol
+
+price = 0 # $0/W
 
 # IT
 # Rack 1

@@ -29,6 +29,8 @@ class SolverOptions:
 		# Peak cost
 		self.peakCost = None # $15/kW
 		self.previousPeak = 0.0
+		self.peakCostLife = None # $10/W for a refular DC and $9/W with batteries
+		self.previousPeakLife = 0.0
 		
 		# Battery
 		self.batIniCap = 32*1000 # Wh

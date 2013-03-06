@@ -26,6 +26,8 @@ try:
 except ImportError, e:
 	print 'export LD_LIBRARY_PATH='+GUROBI_PATH+'/lib'
 
+TOTAL_YEARS = 12
+
 """
 Model of Parasol using MILP.
 """
@@ -157,6 +159,8 @@ class ParasolModel:
 		# Peak cost
 		if self.options.peakCost != None and self.brownPrice != None:
 			PeakBrown = m.addVar(lb=0.0, ub=self.options.maxSize*MaxPUE+self.options.batChargeRate, name="PeakBrown")
+		if self.options.peakCostLife != None and self.brownPrice != None:
+			PeakBrownLife = m.addVar(lb=0.0, ub=self.options.maxSize*MaxPUE+self.options.batChargeRate, name="PeakBrownLife")
 			
 		# Net metering
 		if self.greenAvail != None and self.brownPrice != None:
@@ -202,11 +206,14 @@ class ParasolModel:
 					aux += BattBrown[t]
 				if self.greenAvail != None and self.options.netMeter!=None:
 					aux += -self.options.netMeter*NetGreen[t]
-				optFunction += -self.options.optCost * aux * BrownPrice[t]#/1000.0
-			# Add peak power cost in a linear way
+				optFunction += -self.options.optCost * aux * BrownPrice[t]#/1000.0 # Wh x $/kWh = m$
+			# Add peak power cost in a linear way ($/kW)
 			if self.options.peakCost != None:
 				#optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
-				optFunction += -self.options.optCost * PeakBrown/30 * self.options.peakCost # Account the month for just one day # /1000.0
+				optFunction += -self.options.optCost * PeakBrown/30 * self.options.peakCost # Account the month for just one day # /1000.0 # W x $/kW = m$
+			# Add peak power cost for life time ($/W)
+			if self.options.peakCostLife != None:
+				optFunction += -self.options.optCost * PeakBrownLife*1000.0/(TOTAL_YEARS*365.0) * self.options.peakCostLife # Account the building per day: W*1000 x $/W = m$
 		if self.options.optBat > 0 and self.options.batCap > 0:
 			for t in range(0, self.options.maxTime):
 				aux = 0
@@ -388,6 +395,14 @@ class ParasolModel:
 					aux += BattBrown[t]
 				m.addConstr(aux <= PeakBrown, "Peak["+str(t)+"]")
 			m.addConstr(self.options.previousPeak <= PeakBrown)
+		# Peak cost constraints
+		if self.options.peakCostLife != None and self.brownPrice != None:
+			for t in range(0, self.options.maxTime):
+				aux = LoadBrown[t]
+				if self.options.batCap > 0:
+					aux += BattBrown[t]
+				m.addConstr(aux <= PeakBrownLife, "Peak["+str(t)+"]")
+			m.addConstr(self.options.previousPeakLife <= PeakBrownLife)
 		
 		# Parasol constraints
 		# Constraints: We can only do one thing at a time
@@ -503,7 +518,15 @@ class ParasolModel:
 				else:
 					self.sol["PeakBrown"] = 0.0
 					for t in range(0, self.options.maxTime):
-						self.sol["PeakBrown"] += self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"]
+						if self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"] > self.sol["PeakBrown"]:
+							self.sol["PeakBrown"] = self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"]
+				if self.options.peakCostLife!=None and self.brownPrice != None:
+					self.sol["PeakBrownLife"] = PeakBrownLife.x
+				else:
+					self.sol["PeakBrownLife"] = 0.0
+					for t in range(0, self.options.maxTime):
+						if self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"] > self.sol["PeakBrownLife"]:
+							self.sol["PeakBrownLife"] = self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"]
 		except Exception, e:
 			print 'Error reading solution. State=%d. Message: %s.' % (m.status, str(e))
 		
