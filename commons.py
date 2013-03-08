@@ -121,13 +121,13 @@ def timeStr(time):
 def powerStr(power):
 	if math.isinf(power):
 		return '&infin;W'
-	elif power > 1000*1000*1000*1000:
+	elif power >= 1000*1000*1000*1000:
 		return '%.1fTW' % (power/(1000.0*1000.0*1000.0*1000.0))
-	elif power > 1000*1000*1000:
+	elif power >= 1000*1000*1000:
 		return '%.1fGW' % (power/(1000.0*1000.0*1000.0))
-	elif power > 1000*1000:
+	elif power >= 1000*1000:
 		return '%.1fMW' % (power/(1000.0*1000.0))
-	elif power > 1000:
+	elif power >= 1000:
 		return '%.1fkW' % (power/(1000.0))
 	else:
 		return '%.1fW' % (power)
@@ -149,13 +149,13 @@ def costStr(cost):
 def energyStr(energy):
 	if math.isinf(energy):
 		return '&infin;Wh'
-	elif energy > 1000*1000*1000*1000:
+	elif energy >= 1000*1000*1000*1000:
 		return '%.1fTWh' % (energy/(1000.0*1000.0*1000.0*1000.0))
-	elif energy > 1000*1000*1000:
+	elif energy >= 1000*1000*1000:
 		return '%.1fGWh' % (energy/(1000.0*1000.0*1000.0))
-	elif energy > 1000*1000:
+	elif energy >= 1000*1000:
 		return '%.1fMWh' % (energy/(1000.0*1000.0))
-	elif energy > 1000:
+	elif energy >= 1000:
 		return '%.1fkWh' % (energy/(1000.0))
 	else:
 		return '%.1fWh' % (energy)

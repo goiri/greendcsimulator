@@ -44,6 +44,7 @@ class ParasolModel:
 		# Store for auxiliary variables
 		self.auxvars = []
 		self.auxbins = []
+		self.largeNumber = 99999
 	
 	# Solve problem using Gurobi
 	def solve(self, jobs=None, initial=None, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
@@ -65,9 +66,9 @@ class ParasolModel:
 		if self.options.timeLimit > 0:
 			m.setParam("TimeLimit", self.options.timeLimit)
 
-		
 		# Parameters
 		# Green availability
+		MaxGreenAvail = 0.0
 		if self.greenAvail != None:
 			GreenAvail = {}
 			jG = 0
@@ -76,6 +77,8 @@ class ParasolModel:
 				while len(self.greenAvail)>jG+1 and self.greenAvail[jG+1].t <= ts:
 					jG += 1
 				GreenAvail[t] = self.greenAvail[jG].v
+				if GreenAvail[t] > MaxGreenAvail:
+					MaxGreenAvail = GreenAvail[t]
 		# Brown prices
 		if self.brownPrice != None:
 			BrownPrice = {}
@@ -106,6 +109,7 @@ class ParasolModel:
 		PUE[-1] = PUE[0] # Set value for the battery
 		
 		# Workload
+		MaxWorkload = 0.0
 		if self.load != None:
 			Workload = {}
 			jW = 0
@@ -114,6 +118,16 @@ class ParasolModel:
 				while len(self.load)>jW+1 and self.load[jW+1].t <= ts:
 					jW += 1
 				Workload[t] = self.load[jW].v
+				if Workload[t] > MaxWorkload:
+					MaxWorkload = Workload[t]
+		
+		# Check maximum size for the values
+		if self.largeNumber < MaxWorkload*MaxPUE:
+			self.largeNumber =  int(10*MaxWorkload*MaxPUE)
+		if self.largeNumber < MaxGreenAvail:
+			self.largeNumber =  int(10*MaxGreenAvail)
+		if self.largeNumber < self.options.maxSize*MaxPUE:
+			self.largeNumber = int(10*self.options.maxSize*MaxPUE)
 		
 		# Integrate new variables
 		m.update()
@@ -156,17 +170,19 @@ class ParasolModel:
 			for t in range(0, self.options.maxTime):
 				CapBattery[t] = m.addVar(ub=self.options.batCap, name="CapBattery["+str(t)+"]")
 		
-		# Peak cost
-		if self.options.peakCost != None and self.brownPrice != None:
-			PeakBrown = m.addVar(lb=0.0, ub=self.options.maxSize*MaxPUE+self.options.batChargeRate, name="PeakBrown")
-		if self.options.peakCostLife != None and self.brownPrice != None:
-			PeakBrownLife = m.addVar(lb=0.0, ub=self.options.maxSize*MaxPUE+self.options.batChargeRate, name="PeakBrownLife")
+		# Peak costs
+		if self.brownPrice != None:
+			if self.options.peakCost != None:
+				PeakBrown =     m.addVar(lb=0.0, ub=max(self.options.maxSize*MaxPUE+self.options.batChargeRate, self.options.previousPeak),     name="PeakBrown")
+			if self.options.peakCostLife != None:
+				PeakBrownLife = m.addVar(lb=0.0, ub=max(self.options.maxSize*MaxPUE+self.options.batChargeRate, self.options.previousPeakLife), name="PeakBrownLife")
 			
 		# Net metering
 		if self.greenAvail != None and self.brownPrice != None:
 			NetGreen = {}
 			for t in range(0, self.options.maxTime):
 				NetGreen[t] = m.addVar(name="NetGreen["+str(t)+"]")
+		
 		# Jobs
 		if self.jobs != None:
 			maxLength = 0
@@ -210,10 +226,10 @@ class ParasolModel:
 			# Add peak power cost in a linear way ($/kW)
 			if self.options.peakCost != None:
 				#optFunction += -self.options.optCost * (PeakBrown-self.options.previousPeak)/1000.0 * self.options.peakCost
-				optFunction += -self.options.optCost * PeakBrown/30 * self.options.peakCost # Account the month for just one day # /1000.0 # W x $/kW = m$
+				optFunction += -self.options.optCost * PeakBrown * self.options.peakCost/30.0 # Account the month for just one day # /1000.0 # W x $/kW/day = m$/day
 			# Add peak power cost for life time ($/W)
 			if self.options.peakCostLife != None:
-				optFunction += -self.options.optCost * PeakBrownLife*1000.0/(TOTAL_YEARS*365.0) * self.options.peakCostLife # Account the building per day: W*1000 x $/W = m$
+				optFunction += -self.options.optCost * PeakBrownLife * self.options.peakCostLife*1000.0/(TOTAL_YEARS*365.0) # Account the building per day: W x m$/W/day = m$/day
 		if self.options.optBat > 0 and self.options.batCap > 0:
 			for t in range(0, self.options.maxTime):
 				aux = 0
@@ -290,7 +306,7 @@ class ParasolModel:
 			if not self.options.loadDelay:
 				for t in range(0, self.options.maxTime):
 					#m.addConstr(Load[t] >= Workload[t], "WorkloadMin["+str(t)+"]")
-					m.addConstr(Load[t] == Workload[t], "WorkloadMin["+str(t)+"]") # TODO
+					m.addConstr(Load[t] == Workload[t], "WorkloadMin["+str(t)+"]") # Make it tight
 			else:
 				# Summation of powers have to be the power required by the workload
 				# Checking previous load is actually executed
@@ -338,7 +354,7 @@ class ParasolModel:
 				if self.greenAvail != None and self.brownPrice != None:
 					aux += NetGreen[t]
 				#m.addConstr(LoadGreen[t] + aux <= GreenAvail[t], "MaxGreen["+str(t)+"]")
-				m.addConstr(LoadGreen[t] + aux == GreenAvail[t], "MaxGreen["+str(t)+"]") # TODO
+				m.addConstr(LoadGreen[t] + aux == GreenAvail[t], "MaxGreen["+str(t)+"]") # Make it tight
 		
 		# Battery
 		if self.options.batCap > 0:
@@ -423,6 +439,7 @@ class ParasolModel:
 		m.update()
 		
 		#m.write('test.lp')
+		#m.write('test.mps')
 		
 		# Solve
 		m.optimize()
@@ -554,12 +571,13 @@ class ParasolModel:
 		auxbin = self.getAuxBin(m)
 		
 		# New constraints
-		LARGE = 99999
-		m.addConstr(X <= auxbin * LARGE)
-		m.addConstr(auxbin <= X * LARGE)
-		m.addConstr(Y <= (1-auxbin) * LARGE)
+		#LARGE = 99999
+		#LARGE = 9999999
+		m.addConstr(X <= auxbin * self.largeNumber)
+		m.addConstr(auxbin <= X * self.largeNumber)
+		m.addConstr(Y <= (1-auxbin) * self.largeNumber)
 		m.addConstr(auxvar - Y >= 0)
-		m.addConstr(Y - auxvar >= auxbin * -LARGE)
+		m.addConstr(Y - auxvar >= auxbin * -self.largeNumber)
 	
 	# Get an auxiliary variable
 	def getAuxVar(self, m):
@@ -909,18 +927,20 @@ if __name__=='__main__':
 	'''
 	solver.options.optCost = 1.0
 	solver.options.loadDelay = False
-	solver.options.compression =  3.0
-	solver.options.minSize =  310.0
-	solver.options.maxSize =  1830.0
+	solver.options.compression =  1.0
+	solver.options.minSizeIni = 407464.0
+	solver.options.minSize =  407464.0
+	solver.options.maxSize =  5741520.0
 	solver.options.netMeter = 0.4
 	solver.options.batEfficiency = 0.87
-	solver.options.batCap = 400.0
-	solver.options.batIniCap = 378.731858069
-	solver.options.batDischargeMax = 0.29326171875
+	solver.options.batCap = 8156387.62289
+	solver.options.batIniCap = 10000000.0
+	solver.options.batDischargeMax = 0.19326171875
 	solver.options.prevLoad = 0.0
-	solver.options.previousPeak = 1803.15863909
+	solver.options.previousPeak = 4928641.89942
+	solver.options.previousPeakLife = 4928641.89942
 	solver.options.peakCost = 5.59
-	solver.options.minSizeIni = 355.904761905
+	solver.options.peakCostLife = 5.59
 	
 	'''
 	# Define input parameters
@@ -992,30 +1012,6 @@ if __name__=='__main__':
 	'''
 	
 	# DEBUGGING
-	greenAvail = [TimeValue(0, 156.256161), 
-		TimeValue(3600, 53.322492), 
-		TimeValue(7200, 5.420144), 
-		TimeValue(10800, 0.000000), 
-		TimeValue(14400, 0.000000), 
-		TimeValue(18000, 0.000000), 
-		TimeValue(21600, 0.000000), 
-		TimeValue(25200, 0.000000), 
-		TimeValue(28800, 0.000000), 
-		TimeValue(32400, 0.000000), 
-		TimeValue(36000, 0.000000), 
-		TimeValue(39600, 0.000000), 
-		TimeValue(43200, 0.000000), 
-		TimeValue(46800, 0.000000), 
-		TimeValue(50400, 0.000000), 
-		TimeValue(54000, 0.000000), 
-		TimeValue(57600, 20.806218), 
-		TimeValue(61200, 269.777740), 
-		TimeValue(64800, 532.262111), 
-		TimeValue(68400, 858.256000), 
-		TimeValue(72000, 1165.552000), 
-		TimeValue(75600, 1205.904000), 
-		TimeValue(79200, 913.352000), 
-		TimeValue(82800, 588.984000)]
 	brownPrice = [TimeValue(0, 0.117500), 
 		TimeValue(3600, 0.117500), 
 		TimeValue(7200, 0.117500), 
@@ -1024,72 +1020,96 @@ if __name__=='__main__':
 		TimeValue(18000, 0.117500), 
 		TimeValue(21600, 0.117500), 
 		TimeValue(25200, 0.117500), 
-		TimeValue(28800, 0.080017), 
-		TimeValue(32400, 0.080017), 
-		TimeValue(36000, 0.080017), 
-		TimeValue(39600, 0.080017), 
+		TimeValue(28800, 0.117500), 
+		TimeValue(32400, 0.117500), 
+		TimeValue(36000, 0.117500), 
+		TimeValue(39600, 0.117500), 
 		TimeValue(43200, 0.080017), 
 		TimeValue(46800, 0.080017), 
 		TimeValue(50400, 0.080017), 
 		TimeValue(54000, 0.080017), 
 		TimeValue(57600, 0.080017), 
 		TimeValue(61200, 0.080017), 
-		TimeValue(64800, 0.117500), 
-		TimeValue(68400, 0.117500), 
-		TimeValue(72000, 0.117500), 
-		TimeValue(75600, 0.117500), 
+		TimeValue(64800, 0.080017), 
+		TimeValue(68400, 0.080017), 
+		TimeValue(72000, 0.080017), 
+		TimeValue(75600, 0.080017), 
 		TimeValue(79200, 0.117500), 
 		TimeValue(82800, 0.117500)]
-	puePredi = [TimeValue(0, 1.050000), 
-		TimeValue(3600, 1.050000), 
-		TimeValue(7200, 1.050000), 
-		TimeValue(10800, 1.050000), 
-		TimeValue(14400, 1.050000), 
-		TimeValue(18000, 1.050000), 
-		TimeValue(21600, 1.050000), 
-		TimeValue(25200, 1.050000), 
-		TimeValue(28800, 1.050000), 
-		TimeValue(32400, 1.050000), 
-		TimeValue(36000, 1.050000), 
-		TimeValue(39600, 1.050000), 
-		TimeValue(43200, 1.050000), 
-		TimeValue(46800, 1.050000), 
-		TimeValue(50400, 1.050000), 
-		TimeValue(54000, 1.050000), 
-		TimeValue(57600, 1.050000), 
-		TimeValue(61200, 1.050000), 
-		TimeValue(64800, 1.050000), 
-		TimeValue(68400, 1.050000), 
-		TimeValue(72000, 1.050000), 
-		TimeValue(75600, 1.050000), 
-		TimeValue(79200, 1.050000), 
-		TimeValue(82800, 1.050000)]
-	worklPredi = [TimeValue(0, 1587.667980), 
-		TimeValue(3600, 538.350138), 
-		TimeValue(7200, 1484.399222), 
-		TimeValue(10800, 1218.777024), 
-		TimeValue(14400, 1535.053962), 
-		TimeValue(18000, 1059.321694), 
-		TimeValue(21600, 984.489976), 
-		TimeValue(25200, 539.379731), 
-		TimeValue(28800, 342.448702), 
-		TimeValue(32400, 901.935843), 
-		TimeValue(36000, 930.592360), 
-		TimeValue(39600, 668.784686), 
-		TimeValue(43200, 1191.129461), 
-		TimeValue(46800, 1113.231555), 
-		TimeValue(50400, 850.157380), 
-		TimeValue(54000, 1323.537361), 
-		TimeValue(57600, 1428.613325), 
-		TimeValue(61200, 1403.173832), 
-		TimeValue(64800, 1561.361553), 
-		TimeValue(68400, 772.417157), 
-		TimeValue(72000, 347.699547), 
-		TimeValue(75600, 958.668721), 
-		TimeValue(79200, 748.801940), 
-		TimeValue(82800, 1006.636496)]
+	greenAvail = [TimeValue(0, 5994600.000000), 
+		TimeValue(3600, 5904875.000000), 
+		TimeValue(7200, 5696325.000000), 
+		TimeValue(10800, 3501150.170853), 
+		TimeValue(14400, 1798576.149102), 
+		TimeValue(18000, 1503609.818695), 
+		TimeValue(21600, 990050.737964), 
+		TimeValue(25200, 133731.032229), 
+		TimeValue(28800, 0.000000), 
+		TimeValue(32400, 0.000000), 
+		TimeValue(36000, 0.000000), 
+		TimeValue(39600, 0.000000), 
+		TimeValue(43200, 0.000000), 
+		TimeValue(46800, 0.000000), 
+		TimeValue(50400, 0.000000), 
+		TimeValue(54000, 0.000000), 
+		TimeValue(57600, 0.000000), 
+		TimeValue(61200, 0.000000), 
+		TimeValue(64800, 0.000000), 
+		TimeValue(68400, 36161.411023), 
+		TimeValue(72000, 305032.356391), 
+		TimeValue(75600, 977065.760372), 
+		TimeValue(79200, 1812164.171217), 
+		TimeValue(82800, 2394850.337192)]
+	puePredi = [TimeValue(0, 1.090761), 
+		TimeValue(3600, 1.093696), 
+		TimeValue(7200, 1.093696), 
+		TimeValue(10800, 1.090924), 
+		TimeValue(14400, 1.081630), 
+		TimeValue(18000, 1.079674), 
+		TimeValue(21600, 1.082609), 
+		TimeValue(25200, 1.082609), 
+		TimeValue(28800, 1.082609), 
+		TimeValue(32400, 1.083587), 
+		TimeValue(36000, 1.086522), 
+		TimeValue(39600, 1.086522), 
+		TimeValue(43200, 1.082772), 
+		TimeValue(46800, 1.071522), 
+		TimeValue(50400, 1.071522), 
+		TimeValue(54000, 1.072500), 
+		TimeValue(57600, 1.075435), 
+		TimeValue(61200, 1.075435), 
+		TimeValue(64800, 1.075435), 
+		TimeValue(68400, 1.076250), 
+		TimeValue(72000, 1.076902), 
+		TimeValue(75600, 1.071522), 
+		TimeValue(79200, 1.071522), 
+		TimeValue(82800, 1.070707)]
+	worklPredi = [TimeValue(0, 3075299.498183), 
+		TimeValue(3600, 3179102.565360), 
+		TimeValue(7200, 3217747.895556), 
+		TimeValue(10800, 3364651.072451), 
+		TimeValue(14400, 3576504.817366), 
+		TimeValue(18000, 3906886.815053), 
+		TimeValue(21600, 4308377.484403), 
+		TimeValue(25200, 4566134.588010), 
+		TimeValue(28800, 4737663.972172), 
+		TimeValue(32400, 4656154.912577), 
+		TimeValue(36000, 4422818.646727), 
+		TimeValue(39600, 3822102.648240), 
+		TimeValue(43200, 3000942.250170), 
+		TimeValue(46800, 2255082.225236), 
+		TimeValue(50400, 1554414.844182), 
+		TimeValue(54000, 1206346.988126), 
+		TimeValue(57600, 1069822.287068), 
+		TimeValue(61200, 1200848.162138), 
+		TimeValue(64800, 1492400.242885), 
+		TimeValue(68400, 1881995.631295), 
+		TimeValue(72000, 2330433.564304), 
+		TimeValue(75600, 2650545.769974), 
+		TimeValue(79200, 2893658.399240), 
+		TimeValue(82800, 3057171.863956)]
 	stateChargeBattery = False
-	stateNetMeter = False
+	stateNetMeter = True
 	
 	#solver.options.batDischargeMax = 1.0
 	tnow = datetime.now()

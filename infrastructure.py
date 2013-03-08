@@ -178,6 +178,9 @@ class Rack:
 				power += self.servers[serverId].powers3
 		return power
 
+"""
+IT equipment: it includes multiple racks
+"""
 class IT:
 	def __init__(self):
 		self.racks = {}
@@ -217,21 +220,16 @@ class IT:
 		
 		# Walk the racks
 		for rackId in sorted(self.racks.keys()):
-			'''
-			if self.racks[rackId].number > 1:
-			'''
 			# Calculate the number of required racks
 			numRackServers = self.racks[rackId].getNumServers()
 			reqRacks = float(reqServers)/float(numRackServers)
 			if reqRacks > self.racks[rackId].number:
 				reqRacks = self.racks[rackId].number
-				
 			# Racks at full power
 			maxRackPower = self.racks[rackId].getPower(numRackServers, turnoff=turnoff)
 			power += math.floor(reqRacks) * maxRackPower
 			reqServers -= math.floor(reqRacks) * numRackServers
 			auxminimum -= math.floor(reqRacks) * numRackServers
-			
 			# If we haven't use all the racks
 			if math.floor(reqRacks) < self.racks[rackId].number:
 				# The rack in between
@@ -241,19 +239,23 @@ class IT:
 					auxminimum -= numRackServers
 					if auxminimum < 0:
 						auxminimum = 0
-				
 				# Racks with minimum power
-				racksToGo = self.racks[rackId].number - math.floor(reqRacks)
+				racksToGo = self.racks[rackId].number - math.ceil(reqRacks)
 				if auxminimum > 0:
 					power += math.floor(auxminimum/numRackServers) * self.racks[rackId].getPower(0, minimum=numRackServers, turnoff=turnoff)
-					if auxminimum%numRackServers > 0:
-						power += self.racks[rackId].getPower(0, minimum=(auxminimum%numRackServers), turnoff=turnoff)
+					auxminimum -= math.floor(auxminimum/numRackServers) * numRackServers
+					if auxminimum < numRackServers:
+						power += self.racks[rackId].getPower(0, minimum=auxminimum, turnoff=turnoff)
+						auxminimum -= auxminimum
 					racksToGo -= math.ceil(auxminimum/numRackServers)
-				
 				# Racks completely off
 				if racksToGo > 0:
 					minRackPower = self.racks[rackId].getPower(0, minimum=0, turnoff=turnoff)
 					power += racksToGo * minRackPower
+			if reqServers < 0:
+				reqServers = 0
+			if auxminimum < 0:
+				auxminimum = 0
 		return power
 	
 	"""
@@ -356,7 +358,7 @@ class Infrastructure:
 	# Initialize from file
 	def __init__(self, filename=None):
 		# Default values
-		self.price = None
+		self.price = None # $/W
 		self.solar = SolarPanels()
 		self.wind = WindTurbines()
 		self.battery = Batteries()
@@ -491,16 +493,23 @@ if __name__ == "__main__":
 	
 	t0 = datetime.now()
 	
-	infra = Infrastructure('data/large.infra')
-	infra.printSummary()
-	
-	print 'Servers:     ', infra.it.getNumServers()
-	print '0 nodes (0): ', infra.it.getPower(0, minimum=0), 'W'
-	print '0 nodes (10):', infra.it.getPower(0, minimum=10), 'W'
-	print '20 nodes:    ', powerStr(infra.it.getPower(20, minimum=10))
-	print '1000 nodes:  ', powerStr(infra.it.getPower(1000, minimum=10))
-	print '20000 nodes: ', powerStr(infra.it.getPower(20000, minimum=10))
-	print '200000 nodes:', powerStr(infra.it.getPower(200000, minimum=10))
-	print '203600 nodes:', powerStr(infra.it.getPower(203600, minimum=10))
-	print 'Peak: %s' % powerStr(infra.it.getMaxPower())
+	for datafile in ['data/large.infra']:
+		infra = Infrastructure(datafile)
+		infra.printSummary()
+		
+		print 'Servers:     ', infra.it.getNumServers()
+		print '0 nodes (0): ', infra.it.getPower(0, minimum=0), 'W'
+		print '0 nodes (10):', infra.it.getPower(0, minimum=10), 'W'
+		print '20 nodes:    ', powerStr(infra.it.getPower(20, minimum=10))
+		print '1000 nodes:  ', powerStr(infra.it.getPower(1000, minimum=10))
+		print '20000 nodes: ', powerStr(infra.it.getPower(20000, minimum=10))
+		print '200000 nodes:', powerStr(infra.it.getPower(200000, minimum=10))
+		print '203600 nodes:', powerStr(infra.it.getPower(203600, minimum=10))
+		print 'Peak: %s' % powerStr(infra.it.getMaxPower())
+		print 'Get nodes number of nodes based on power:'
+		for n in [4, 20, 40, 46, 50, 100, 1000]:
+			power = infra.it.getPower(n, minimum=0)
+			print '%4d => %7.1fW => %4d' % (n, power, infra.it.getNodes(power, minimum=0))
+		print infra.it.getNumServers(), infra.it.getMaxPower(), infra.it.getNodes(infra.it.getMaxPower(), minimum=0)
 	print datetime.now()-t0
+	

@@ -13,6 +13,7 @@ WORKLOAD="data/workload/variable.workload"
 WORKLOAD="data/workload/mix.workload"
 # All workloads
 WORKLOADS="data/workload/asplos.workload data/workload/hotmail.workload data/workload/messenger.workload data/workload/wikipedia.workload data/workload/flash.workload data/workload/search.workload data/workload/orkut.workload data/workload/mix.workload"
+WORKLOADS="data/workload/search.workload"
 
 # Locations
 LOCATIONS=""
@@ -23,28 +24,76 @@ NETMETER_0=0.0  #   0%
 NETMETER_WR=0.4 #  40%
 NETMETER_RR=1.0 # 100%
 
-
 # Simple experiments
-LOCATIONS="data/locations/newark.location"
-WORKLOADS="data/workload/asplos.workload"
+# LOCATIONS="data/locations/newark.location"
+# WORKLOADS="data/workload/asplos.workload"
+
+INFRASTRUCTURE="data/large.infra"
 
 # Multiprocess
 MAXTHREADS=`cat /proc/cpuinfo  | grep processor | wc -l`
 NUMTHREADS=0
+# Large
+SOLARS="0 1MW 2MW 5MW 10MW"
+BATTERIES="0 1MWh 2MWh 5MWh 10MWh 20MWh 50MWh 100MWh"
+# Parasol
+# SOLARS="3200 0 800 1600 2400"
+# BATTERIES="0 32000 800 8000 16000 24000"
 
-# Read solar modes from command line
-SOLARS="3200 0 800 1600 2400"
-if [ $# -ge 1 ]; then
-	SOLARS=$*
-fi
+# Read modes from command line
+while [ $# -gt 0 ]; do
+	case $1 in
+		"--solar")
+			shift
+			SOLARS=$1
+			shift
+			while [[ $1 != --* && $# -gt 0 ]]; do
+				SOLARS=" "$1
+				shift
+			done
+			;;
+		"--battery")
+			shift
+			BATTERIES=$1
+			shift
+			while [[ $1 != --* && $# -gt 0 ]]; do
+				BATTERIES=" "$1
+				shift
+			done
+			;;
+		"--location")
+			shift
+			LOCATIONS=$1
+			shift
+			while [[ $1 != --* && $# -gt 0 ]]; do
+				LOCATIONS=" "$1
+				shift
+			done
+			;;
+		"--workload")
+			shift
+			WORKLOADS=$1
+			shift
+			while [[ $1 != --* && $# -gt 0 ]]; do
+				WORKLOADS=" "$1
+				shift
+			done
+			;;
+		*)
+			echo "Unknown option: $1"
+			shift
+			;;
+	esac
+done
+
 
 if true; then
 	for ALWAYSON in ""; do # for ALWAYSON in "" "--alwayson"; do
 		for LOCATION in $LOCATIONS; do
 			for WORKLOAD in $WORKLOADS; do
-				for DELAY in "--delay" ""; do
-					for SOLAR in $SOLARS; do
-						for BATTERY in 0 32000 800 8000 16000 24000; do
+				for DELAY in "" "--delay"; do
+					for BATTERY in $BATTERIES; do
+						for SOLAR in $SOLARS; do
 							# Wait for empty slots
 							if [ $NUMTHREADS -ge $MAXTHREADS ]; then
 								# We have filled all the threads, wait for them to finish
@@ -55,7 +104,7 @@ if true; then
 								NUMTHREADS=0
 							fi
 							# Run more simulations
-							bash simulator.sh --solar $SOLAR --battery $BATTERY --period $PERIOD --workload $WORKLOAD -l $LOCATION $DELAY $ALWAYSON > /dev/null &
+							bash simulator.sh -i $INFRASTRUCTURE --solar $SOLAR --battery $BATTERY --period $PERIOD --workload $WORKLOAD -l $LOCATION $DELAY $ALWAYSON > /dev/null &
 							# Store the PID
 							THREADS[$NUMTHREADS]=$!
 							let NUMTHREADS=$NUMTHREADS+1

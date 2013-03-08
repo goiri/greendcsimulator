@@ -36,9 +36,10 @@ class SolverOptions:
 		self.batIniCap = 32*1000 # Wh
 		self.batCap =  32*1000 # Wh
 		#self.batChargeRate = 4400 # W
-		self.batChargeRate = 8000 # W
+		#self.batChargeRate = 8000.0 # W
+		self.batChargeRate = 0
 		self.batDischargeMax = None # % maximum depth of discharge: 40% -> 0.4
-		self.batDischargeProtection = 0.15 + 0.06 # % maximum depth of discharge: 15% + 6% = 21%
+		self.batDischargeProtection = 0.15 + 0.05 # % maximum depth of discharge: 15% + 5% = 20%
 		self.batEfficiency = 0.9 # % efficiency
 
 		# Optimization

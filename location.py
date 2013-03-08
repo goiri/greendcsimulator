@@ -228,52 +228,13 @@ class Location:
 		
 	def getSolar(self, time):
 		offsettime = time - self.solaroffset
-		"""
-		ret = 0.0
-		if len(self.solar) > 0:
-			if offsettime <= self.solar[0][0]:
-				t, solar = self.solar[0]
-				ret = solar
-			elif offsettime >= self.solar[-1][0]:
-				t, solar = self.solar[-1]
-				ret = solar
-			else:
-				for i in range(0, len(self.solar)):
-					if offsettime >= self.solar[i][0] and offsettime < self.solar[i+1][0]:
-						ret = interpolate(self.solar[i], self.solar[i+1], offsettime)
-						break
-		return (ret/self.solarefficiency)/self.solarcapacity
-		"""
 		return (self.solar[offsettime]/self.solarefficiency)/self.solarcapacity
 		
 	def getWind(self, time):
 		offsettime = time - self.windoffset
-		"""
-		ret = 0.0
-		if len(self.wind) > 0:
-			if offsettime <= self.wind[0][0]:
-				t, wind = self.wind[0]
-				ret = wind
-			elif offsettime >= self.wind[-1][0]:
-				t, wind = self.wind[-1]
-				ret =  wind
-			else:
-				for i in range(0, len(self.wind)):
-					if offsettime >= self.wind[i][0] and offsettime < self.wind[i+1][0]:
-						ret = interpolate(self.wind[i], self.wind[i+1], offsettime)
-						break
-		return (ret/self.windefficiency)/self.windcapacity
-		"""
 		return (self.wind[offsettime]/self.solarefficiency)/self.solarcapacity
 	
 	def getBrownPrice(self, time):
-		"""
-		for i in range(0, len(self.brownenergyprice)):
-			t, v = self.brownenergyprice[i]
-			if time >= self.brownenergyprice[i][0] and time < self.brownenergyprice[i+1][0]:
-				return self.brownenergyprice[i][1]
-		return None
-		"""
 		offsettime = time
 		return self.brownenergyprice[offsettime]
 		

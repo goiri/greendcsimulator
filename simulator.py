@@ -1,5 +1,7 @@
 #!/usr/bin/env python2.7
 
+import os
+
 from optparse import OptionParser
 
 from conf import *
@@ -19,8 +21,6 @@ from parasolsolvercommons import TimeValue
 
 """
 Simulator
-TODO list:
-* On/off peak prices around the world are tricky. We dont have summar/winter pricings
 TEST list:
 * Compression of the load when it is deferred
 * New proposal for peak power and energy accounting
@@ -146,6 +146,8 @@ class Simulator:
 		solver.options.maxSize = self.infra.it.getMaxPower()
 		# Power infrastructure costs
 		solver.options.netMeter = self.location.netmetering
+		# Building cost
+		solver.options.peakCostLife = self.infra.price
 		# Battery
 		solver.options.batEfficiency = self.infra.battery.efficiency
 		solver.options.batCap = self.infra.battery.capacity
@@ -255,8 +257,7 @@ class Simulator:
 						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 						#coolingPower = self.infra.cooling.getPower(temperature)
 						w = loadPower #+ coolingPower
-						# TODO Workload prediction
-						#w = 1000.0
+						# TODO Workload prediction #w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
@@ -320,7 +321,7 @@ class Simulator:
 				batdischarge = sol['LoadBatt[0]']
 				batcharge = sol['BattBrown[0]'] + sol['BattGreen[0]']
 				load = sol['LoadBrown[0]'] + sol['LoadGreen[0]'] + sol['LoadBatt[0]']
-								
+				
 				# Delay load
 				if self.workload.deferrable:
 					# Delayed load = Current workload - executed load
@@ -335,10 +336,11 @@ class Simulator:
 				
 				# Fix solution to match the actual system (Parasol)
 				'''
+				# This shouldn't be needed anymore
 				# Sometimes the solver says to run more than the load we have there
 				if execload > workload+prevLoad:
 					print 'We are running more than what we actually have'
-					print execload, workload, prevLoad # TODO
+					print execload, workload, prevLoad 
 					surplus = execload - (workload+prevLoad)
 					execload -= surplus
 					brownpower -= surplus
@@ -351,7 +353,7 @@ class Simulator:
 								netpower += -batdischarge
 							batdischarge = 0.0
 						brownpower = 0.0
-				print execload, workload, prevLoad # TODO
+				print execload, workload, prevLoad
 				'''
 				# If we charge, we cannot do net metering at the same time
 				if batcharge > 0.0 and netpower > 0.0:
@@ -422,8 +424,7 @@ class Simulator:
 					
 					print ' PeakBrown ',  sol['PeakBrown']
 			
-			'''
-			if timeStr(time) == '2d15h45m':
+			if timeStr(time) == '80d11h15m':
 				print 'Input at', timeStr(time), 'was:'
 				print ' Green    ', greenAvail[0]
 				print ' Workload ', worklPredi[0]
@@ -449,19 +450,22 @@ class Simulator:
 				print solver.options.optCost
 				print solver.options.loadDelay
 				print solver.options.compression
+				print solver.options.minSizeIni
 				print solver.options.minSize
 				print solver.options.maxSize
 				print solver.options.netMeter
 				print solver.options.batEfficiency
+				print solver.options.batIniCap
 				print solver.options.batCap
 				print solver.options.batDischargeMax
 				print solver.options.prevLoad
 				print solver.options.previousPeak
+				print solver.options.previousPeakLife
 				print solver.options.peakCost
-				print solver.options.batIniCap
-				print solver.options.batDischargeMax
-				print solver.options.minSizeIni
+				print solver.options.peakCostLife
 			'''
+			'''
+			
 			
 			# Charge/discharge battery
 			battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
@@ -509,9 +513,9 @@ class Simulator:
 						solver.options.batDischargeMax += 5/100.0 # Increase 5%
 					elif batlifetime > projbatlifetime:
 						solver.options.batDischargeMax -= 5/100.0 # Decrease 5%
-					# Adjust margins
-					if solver.options.batDischargeMax > 0.50:
-						solver.options.batDischargeMax = 0.50
+					# Adjust margins 0 < x < 80%
+					if solver.options.batDischargeMax > 0.80:
+						solver.options.batDischargeMax = 0.80
 					if solver.options.batDischargeMax < 0.00:
 						solver.options.batDischargeMax = 0.00
 			
@@ -537,18 +541,13 @@ class Simulator:
 			# Net metering
 			costbrownenergy -= (TIMESTEP/SECONDS_HOUR) * netpower/1000.0 *   brownenergyprice * self.location.netmetering # (seconds -> hours) * kW * $/kWh * %
 			
-			'''
-			print timeStr(time), (startdate + timedelta(seconds=time)).month
-			print 'Brown:', brownpower, brownenergyprice, (TIMESTEP/SECONDS_HOUR) * brownpower/1000.0 * brownenergyprice # (seconds -> hours) * kW * $/kWh
-			print 'Net:',   netpower, brownenergyprice, (TIMESTEP/SECONDS_HOUR) * netpower/1000.0 * brownenergyprice * self.location.netmetering # (seconds -> hours) * kW * $/kWh * %
-			print 'Peak:',  peakbrown, self.location.brownpowerprice[time+24*60*60], self.location.brownpowerprice[time+24*60*60] * peakbrown/1000.0
-			print 'Energy cost:', costbrownenergy
-			print 'Power cost: ', costbrownpower
-			'''
-			
 			# Peak power accounting every month
 			if (startdate + timedelta(seconds=time)).month != currentmonth:
 				costbrownpower += self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0
+				fout.write('# Peak brown power month %d: $%.2f (%.2fW)\n' % (currentmonth, self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0, peakbrown))
+				# Flush file
+				fout.flush()
+				os.fsync(fout.fileno())
 				# Reset accounting
 				peakbrown = 0.0
 				currentmonth = (startdate + timedelta(seconds=time)).month
@@ -556,7 +555,6 @@ class Simulator:
 			# Logging
 			if fout != None:
 				fout.write('%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % (time, brownenergyprice, greenpower, netpower, brownpower, batcharge, batdischarge, battery, workload, execload*(pue-1.0), execload, prevLoad))
-				fout.flush()
 		
 		# Account for the last month
 		costbrownpower += self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0
@@ -603,8 +601,8 @@ if __name__ == "__main__":
 	# Period
 	parser.add_option('-p', '--period',   dest='period',    help='specify the infrastructure file', default='1y')
 	# Infrastructure options
-	parser.add_option('-s', '--solar',    dest='solar',     type="float", help='specify the infrastructure has solar', default=None)
-	parser.add_option('-b', '--battery',  dest='battery',   type="float", help='specify the infrastructure has batteries', default=None)
+	parser.add_option('-s', '--solar',    dest='solar',     type="string", help='specify the infrastructure has solar', default=None)
+	parser.add_option('-b', '--battery',  dest='battery',   type="string", help='specify the infrastructure has batteries', default=None)
 	parser.add_option('--nosolar',        dest='nosolar',   action="store_true",  help='specify the infrastructure has no solar')
 	parser.add_option('--nobattery',      dest='nobattery', action="store_true",  help='specify the infrastructure has no batteries')
 	parser.add_option('-c', '--cooling',  dest='cooling',   help='specify the cooling infrastructure file', default=None)
@@ -627,9 +625,9 @@ if __name__ == "__main__":
 	if options.nosolar == True:
 		simulator.infra.solar.capacity = 0.0
 	if options.battery != None:
-		simulator.infra.battery.capacity = options.battery
+		simulator.infra.battery.capacity = parseEnergy(options.battery)
 	if options.solar != None:
-		simulator.infra.solar.capacity = options.solar
+		simulator.infra.solar.capacity = parsePower(options.solar)
 	if options.netmeter != None:
 		simulator.location.netmetering = options.netmeter
 	if options.cooling != None:
