@@ -36,7 +36,6 @@ class ParasolModel:
 		self.options = SolverOptions()
 		self.obj = None
 		self.sol = None
-		self.jobs = None
 		self.load = None
 		self.greenAvail = None
 		self.brownPrice = None
@@ -49,15 +48,13 @@ class ParasolModel:
 		self.saveModel = False
 	
 	# Solve problem using Gurobi
-	def solve(self, jobs=None, initial=None, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
+	def solve(self, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
 		# Solution and objective
 		self.sol = None
 		self.obj = None
 		
 		# Initialize parameters
-		self.jobs = jobs
 		self.load = load
-		
 		self.greenAvail = greenAvail
 		self.brownPrice = brownPrice
 		self.pue = pue
@@ -185,34 +182,8 @@ class ParasolModel:
 			for t in range(0, self.options.maxTime):
 				NetGreen[t] = m.addVar(name="NetGreen["+str(t)+"]")
 		
-		# Jobs
-		if self.jobs != None:
-			maxLength = 0
-			for job in self.jobs:
-				if job.length > maxLength:
-					maxLength = job.length
-			StartJob = {}
-			LoadJob = {}
-			LoadJobIni = {}
-			LoadJobFin = {}
-			for j in self.jobs:
-				#StartJob[j.id] = m.addVar(ub=self.options.maxTime+1, vtype=GRB.INTEGER, obj=0.0, name="StartJob["+str(j.id)+"]")
-				StartJob[j.id] = m.addVar(ub=self.options.maxTime+1, vtype=GRB.INTEGER, name="StartJob["+str(j.id)+"]")
-				for t in range(0, self.options.maxTime+1+(maxLength/self.options.slotLength)):
-					LoadJob[j.id, t] =    m.addVar(vtype=GRB.BINARY, name="LoadJob["+str(j.id)+","+str(t)+"]")
-					LoadJobIni[j.id, t] = m.addVar(vtype=GRB.BINARY, name="LoadJobIni["+str(j.id)+","+str(t)+"]")
-					LoadJobFin[j.id, t] = m.addVar(vtype=GRB.BINARY, name="LoadJobFin["+str(j.id)+","+str(t)+"]")
-
 		# Finish variables declaration
 		m.update()
-		
-		# Set starting solution
-		if initial != None and self.jobs != None:
-			#for j in jobs:
-				#StartJob[j.id].start = self.options.maxTime
-			for j in initial:
-				StartJob[j].start = initial[j]
-			m.update()
 		
 		# Optimization function
 		optFunction = 0.0
@@ -238,32 +209,6 @@ class ParasolModel:
 				optCost += PeakBrownLife * self.options.peakCostLife/(TOTAL_YEARS*365.0) # Account the building (12 years): W x ($/W)/day = $/day
 			# Add the final cost function to the optimization function
 			optFunction += self.options.optCost * optCost * 1000.0
-		'''
-		if self.options.optBat > 0 and self.options.batCap > 0:
-			for t in range(0, self.options.maxTime):
-				aux = 0
-				if self.greenAvail != None:
-					aux += BattGreen[t]
-				if self.brownPrice != None:
-					aux += BattBrown[t]
-				optFunction += (-1.0*self.options.optBat/self.options.maxTime) * aux
-			#optFunction += (-1.0*self.options.optBat/self.options.maxTime) * quicksum(aux for t in range(0, self.options.maxTime))
-		if self.options.optBatCap > 0 and self.options.batCap > 0:
-			optFunction += -float(self.options.optBatCap)/self.options.maxTime * quicksum(CapBattery[t] for t in range(0, self.options.maxTime))
-		if self.options.optBatCapEnd > 0 and self.options.batCap > 0:
-			optFunction += -self.options.optBatCapEnd * CapBattery[self.options.maxTime-1]
-		if self.options.optPrior > 0 and self.jobs != None:
-			for j in self.jobs:
-				for t in range(0, self.options.maxTime):
-					optFunction += self.options.optPrior * (j.priority+1) * LoadJob[j,t]/int(math.ceil(job.length/(1.0*self.options.slotLength)))
-		if self.options.optSlowdown > 0:
-			optFunction += self.options.optSlowdown * quicksum((1-StartJob[j.id]/self.options.maxTime) for j in self.jobs)
-		if self.options.optLoad > 0:
-			optFunction += self.options.optLoad * quicksum(Load[t] for t in range(0, self.options.maxTime))
-		if self.options.optPerf > 0:
-			# Load_down - Load_up
-			optFunction += quicksum((self.options.maxTime - t)*0.1 * (Load[t]-Workload[t]) for t in range(0, self.options.maxTime))
-		'''
 		
 		# Add a delta to avoid net metering and battery changes
 		if self.greenAvail != None and self.brownPrice != None and self.options.batCap > 0:
@@ -279,37 +224,6 @@ class ParasolModel:
 		m.update()
 		
 		# Constraints
-		# Constraints for load
-		if self.jobs != None:
-			# Always grows
-			# s.t. LoadJobIniInc {j in JOBS, t in TIMEALL} :  LoadJobIni[j,t] <= LoadJobIni[j,t+1];
-			# s.t. LoadJobFinInc {j in JOBS, t in TIMEALL} :  LoadJobFin[j,t] <= LoadJobFin[j,t+1];
-			# Aggregate load
-			# s.t. LoadGen       {j in JOBS, t in TIMEXALL} : LoadJob[j,t] = LoadJobIni[j,t] -  LoadJobFin[j,t];
-			# Barrier
-			# s.t. LoadBarrier   {j in JOBS} : LoadJob[j,T] = 0;
-			# Job start
-			# s.t. JobStart      {j in JOBS} : sum{t in TIME} LoadJobIni[j,t] = T - StartJob[j];
-			# Job length
-			# s.t. MaxLength     {j in JOBS} : sum{t in TIMEXALL} LoadJob[j,t] = LengthJobs[j];
-			for j in self.jobs:
-				for t in range(0, self.options.maxTime+(maxLength/self.options.slotLength)):
-					m.addConstr(LoadJobIni[j.id, t] <= LoadJobIni[j.id, t+1], "LoadJobIniInc["+str(j.id)+","+str(t)+"]")
-					m.addConstr(LoadJobFin[j.id, t] <= LoadJobFin[j.id, t+1], "LoadJobFinInc["+str(j.id)+","+str(t)+"]")
-				for t in range(0, self.options.maxTime+1+(maxLength/self.options.slotLength)):
-					m.addConstr(LoadJob[j.id, t] == LoadJobIni[j.id, t] -  LoadJobFin[j.id, t], "LoadGen["+str(j.id)+","+str(t)+"]")
-				# Barrier
-				m.addConstr(LoadJob[j.id, self.options.maxTime] == 0, "LoadBarrier["+str(j.id)+"]")
-				# Job start
-				m.addConstr(quicksum(LoadJobIni[j.id,t] for t in range(0, self.options.maxTime)) == (self.options.maxTime - StartJob[j.id]), "JobStart["+str(j.id)+"]")
-				# Job length
-				m.addConstr(quicksum(LoadJob[j.id,t] for t in range(0, self.options.maxTime+1+(maxLength/self.options.slotLength))) == int(math.ceil(job.length/(1.0*self.options.slotLength))), "MaxLength["+str(j.id)+"]")
-			
-			# The load is composed by the internal loads
-			# s.t. LoadPower {t in TIME} :     sum{j in JOBS} LoadJob[j,t] * PowerJobs[j] = Load[t];
-			for t in range(0, self.options.maxTime):
-				m.addConstr(quicksum((LoadJob[j.id,t] * j.power) for j in self.jobs) == Load[t], "LoadPower["+str(t)+"]")
-		
 		# Load constraints
 		if self.load != None:
 			if not self.options.loadDelay:
@@ -570,12 +484,6 @@ class ParasolModel:
 					for t in range(0, self.options.maxTime):
 						if self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"] > self.sol["PeakBrownLife"]:
 							self.sol["PeakBrownLife"] = self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"]
-				# Jobs
-				if self.jobs != None:
-					for j in self.jobs:
-						self.sol["StartJob["+j.id+"]"] = StartJob[j.id].x
-						for t in range(0, self.options.maxTime):
-							self.sol["LoadJob["+j.id+","+str(t)+"]"] = LoadJob[j.id, t].x
 		except Exception, e:
 			print 'Error reading solution. State=%d. Message: %s.' % (m.status, str(e))
 		
@@ -626,28 +534,6 @@ class ParasolModel:
 				self.auxbins.append(m.addVar(vtype=GRB.BINARY))
 			m.update()
 		return self.auxbins.pop()
-	
-	# Print the jobs in the system
-	def printJobs(self):
-		if self.jobs != None:
-			print "Jobs:"
-			for job in self.jobs:
-				executed = True
-				out = job.id + "\t" + str(job.length/self.options.slotLength)+ "\t"
-				
-				if "StartJob["+job.id+"]" in solver.sol:
-					out += str(int(solver.sol["StartJob["+job.id+"]"])) + "\t"
-					if solver.sol["StartJob["+job.id+"]"] >= solver.options.maxTime:
-						executed = False
-				for t in range(0, solver.options.maxTime):
-					if "LoadJob["+job.id+","+str(t)+"]" in solver.sol:
-						out += str(int(solver.sol["LoadJob["+job.id+","+str(t)+"]"]))
-				if not executed:
-					out += "|"
-				#for t in range(maxTime, maxTime+maxLength+1):
-					#if "LoadJob["+job.id+","+str(t)+"]" in solver.sol:
-						#out += str(solver.sol["LoadJob["+job.id+","+str(t)+"]"])
-				print out
 	
 	# Show the results of the optimization
 	def printResults(self):
@@ -782,21 +668,6 @@ class ParasolModel:
 				report.write("Net: %s $%.2f\n" % (toEnergyString(totalNetMeter*self.options.slotLength), totalNetMeterCost))
 				report.write("Degraded quality: %.2f%%\n" % ((totalQualityFraction*100.0)/self.options.maxTime))
 				
-				# Jobs
-				if jobs != None:
-					for job in jobs:
-						executed = True
-						out = job.id + "\t" + str(job.length/self.options.slotLength)+ "\t" + str(job.power)+ "\t"
-						if "StartJob["+job.id+"]" in self.sol:
-							out += str(int(self.sol["StartJob["+job.id+"]"])) + "\t"
-							if self.sol["StartJob["+job.id+"]"] >= self.options.maxTime:
-								executed = False
-						for t in range(0, self.options.maxTime):
-							if "LoadJob["+job.id+","+str(t)+"]" in self.sol:
-								out += str(int(self.sol["LoadJob["+job.id+","+str(t)+"]"]))
-						if not executed:
-							out += "|"
-						report.write(out+"\n")
 				report.close()
 	
 	def writeOutput(self):
@@ -904,7 +775,6 @@ if __name__=='__main__':
 	
 	# Input parameters
 	'''
-	jobs = None
 	greenAvail = None
 	brownPrice = None
 	workload = None
@@ -1162,8 +1032,7 @@ if __name__=='__main__':
 	else:
 		print "Opti: %.3f" % (solver.obj)
 
-		# Print jobs
-		solver.printJobs()
+		# Print output
 		solver.printResults()
 
 		battBrown0 = solver.sol["BattBrown[0]"]
