@@ -87,7 +87,7 @@ class Setup:
 		out += ' Bat:%s' % energyStr(self.battery)
 		return out
 
-#Defines the costs related with operating a datacenter.
+# Defines the costs related with operating a datacenter.
 class Cost:
 	def __init__(self, energy=0.0, peak=0.0, capex=0.0, building=0.0):
 		self.capex = capex # Batteries + Solar + Wind + Building
@@ -119,19 +119,20 @@ class Cost:
 
 # Result for an experiment
 class Result:
-	def __init__(self):
-		pass
+	def __init__(self, peakpower = 0.0):
+		self.peakpower = peakpower
 
-#Defines an experiment
+# Defines an experiment
 class Experiment:
 	# Initialize
-	def __init__(self, scenario=None, setup=None, cost=None, batterylifetime=None, progress=0.0):
+	def __init__(self, scenario=None, setup=None, cost=None, result=None, batterylifetime=None, progress=0.0):
 		self.scenario = scenario
 		self.setup = setup
 		self.cost = cost
+		self.result = result
 		self.batterylifetime = batterylifetime
 		self.progress = progress
-
+	
 	# Read experiment from filename
 	@classmethod
 	def fromfilename(self, filename):
@@ -426,6 +427,7 @@ def saveDetails(experiment):
 		fout.write('<ul>\n')
 		fout.write('  <li>Location: %s</li>\n' % experiment.setup.location.replace('_', ' ').title())
 		fout.write('  <li>IT: %s</li>\n' % powerStr(experiment.setup.itsize))
+		fout.write('  <li>Peak power: %s</li>\n' % powerStr(experiment.result.peakpower))
 		fout.write('  <li>Solar: %s</li>\n' %   (powerStr(experiment.setup.solar)    if experiment.setup.solar>0.0   else '<font color="#999999">&#9747;</font>'))
 		fout.write('  <li>Battery: %s</li>\n' % (energyStr(experiment.setup.battery) if experiment.setup.battery>0.0 else '<font color="#999999">&#9747;</font>'))
 		fout.write('  <li>Cooling:%s</li>\n' % ('None' if experiment.setup.cooling == None or experiment.setup.cooling.lower() == 'none' else experiment.setup.cooling.title()))
@@ -564,7 +566,7 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 	fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (experiment.getFilename()+'.html', experimentDescription))
 	# Setup
 	fout.write('<td align="right">%s</td>\n' % (timeStr(experiment.scenario.period)))
-	fout.write('<td align="center">%s</td>\n' % (powerStr(experiment.setup.itsize)))
+	fout.write('<td align="center">%s (%s)</td>\n' % (powerStr(experiment.setup.itsize), powerStr(experiment.result.peakpower)))
 	fout.write('<td align="center">%s</td>\n' % ('-' if experiment.setup.cooling == None or experiment.setup.cooling.lower() == 'none' else experiment.setup.cooling.title()))
 	fout.write('<td align="right">%s</td>\n' % (experiment.setup.location.replace('_', ' ').title()[0:10]))
 	fout.write('<td align="right">%.1f%%</td>\n' % (experiment.scenario.netmeter*100.0))
@@ -654,6 +656,8 @@ if __name__ == "__main__":
 			costpeak = 0.0
 			costcapex = 0.0
 			costbuilding = 0.0
+			# Peak
+			peakpower = 0.0
 			# Battery
 			batnumdischarges = None
 			batmaxdischarge = None
@@ -676,6 +680,7 @@ if __name__ == "__main__":
 								costpeak = parseCost(line.split(' ')[4])
 							elif line.startswith('# Peak brown power life:'):
 								costbuilding = parseCost(line.split(' ')[5])
+								peakpower = parsePower(line.split(' ')[6][1:-1])
 							elif line.startswith('# Infrastructure:'):
 								costcapex = parseCost(line.split(' ')[2])
 							elif line.startswith('# Total:'):
@@ -704,6 +709,7 @@ if __name__ == "__main__":
 				expRunni += 1
 			expTotal += 1
 			
+			experiment.result = Result(peakpower=peakpower)
 			experiment.cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex, building=costbuilding)
 			experiment.batterylifetime = batlifetime
 			

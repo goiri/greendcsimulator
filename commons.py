@@ -159,3 +159,8 @@ def energyStr(energy):
 		return '%.1fkWh' % (energy/(1000.0))
 	else:
 		return '%.1fWh' % (energy)
+
+if __name__ == "__main__":
+	print timeStr(17967600)
+	from datetime import datetime, timedelta
+	print datetime(2013, 1, 1) + timedelta(seconds=17967600)

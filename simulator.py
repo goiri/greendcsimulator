@@ -21,9 +21,10 @@ from parasolsolvercommons import TimeValue
 
 """
 Simulator
+TODO list:
+Debug possible errors
 TEST list:
-* Compression of the load when it is deferred
-* New proposal for peak power and energy accounting
+Debug possible errors
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -261,7 +262,11 @@ class Simulator:
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
+				if timeStr(time) == '76d15h':
+					solver.saveModel = True
 				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
+				solver.saveModel = False
+			
 			
 			# Initialize
 			brownpower = 0.0
@@ -424,7 +429,16 @@ class Simulator:
 					
 					print ' PeakBrown ',  sol['PeakBrown']
 			
-			if timeStr(time) == '80d11h15m':
+			if timeStr(time) == '76d15h':# or timeStr(time) == timeStr(6620400-900):
+				print 'Solution at', timeStr(time), 'was:'
+				print ' Load      ', sol['Load[0]']
+				print ' LoadBrown ', sol['LoadBrown[0]']
+				print ' LoadBatt  ', sol['LoadBatt[0]']
+				print ' LoadGreen ', sol['LoadGreen[0]']
+				print ' BattBrown ',  sol['BattBrown[0]']
+				print ' BattGreen ',  sol['BattGreen[0]']
+				print ' CapBattery',  sol['CapBattery[0]']
+				
 				print 'Input at', timeStr(time), 'was:'
 				print ' Green    ', greenAvail[0]
 				print ' Workload ', worklPredi[0]
@@ -447,22 +461,31 @@ class Simulator:
 				print stateNetMeter
 				
 				print 'Options'
-				print solver.options.optCost
-				print solver.options.loadDelay
-				print solver.options.compression
+				print '  slotLength      ', solver.options.slotLength
+				print '  timeLimit       ', solver.options.timeLimit
+				print '  maxTime         ', solver.options.maxTime
+				print '  optCost         ', solver.options.optCost
+				print '  loadDelay       ', solver.options.loadDelay
+				print '  compression     ', solver.options.compression
 				print solver.options.minSizeIni
 				print solver.options.minSize
 				print solver.options.maxSize
-				print solver.options.netMeter
-				print solver.options.batEfficiency
-				print solver.options.batIniCap
-				print solver.options.batCap
-				print solver.options.batDischargeMax
-				print solver.options.prevLoad
-				print solver.options.previousPeak
-				print solver.options.previousPeakLife
-				print solver.options.peakCost
-				print solver.options.peakCostLife
+				print '  netMeter        ', solver.options.netMeter
+				print '  batEfficiency   ', solver.options.batEfficiency
+				print '  batIniCap       ', solver.options.batIniCap
+				print '  batCap          ', solver.options.batCap
+				print '  batDischargeMax ', solver.options.batDischargeMax
+				print '  batDischargeProtection ', solver.options.batDischargeProtection
+				print '  batChargeRate   ', solver.options.batChargeRate
+				print '  prevLoad        ', solver.options.prevLoad
+				print '  previousPeak    ', solver.options.previousPeak
+				print '  previousPeakLife', solver.options.previousPeakLife
+				print '  peakCost        ', solver.options.peakCost
+				print '  peakCostLife    ', solver.options.peakCostLife	
+				
+				print 'Result:'
+				print '  LoadBrown',  sol['LoadBrown[0]']
+				print '  BattBrown',  sol['BattBrown[0]']
 			'''
 			'''
 			
