@@ -30,6 +30,7 @@ TOTAL_YEARS = 12
 
 """
 Model of Parasol using MILP.
+Supports workloads, etc.
 """
 class ParasolModel:
 	def __init__(self):
