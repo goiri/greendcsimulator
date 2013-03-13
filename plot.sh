@@ -104,7 +104,7 @@ echo "\"$INPUTFILEDATA\" using (\$1/3600):((\$11)/$SCALE)              w lines l
 echo "\"$INPUTFILEDATA\" using (\$1/3600):((\$11+\$10)/$SCALE)         w lines lw 1             lc rgb \"#555555\" title \"Executed load + Cooling\", \\" >> /tmp/$OUTPUTFILE.plot
 # Debugging
 # echo "\"$INPUTFILEDATA\" using (\$1/3600):((\$4)/$SCALE)              w lines lw 1             lc rgb \"#000000\" title \"Aux net neter\", \\" >> /tmp/$OUTPUTFILE.plot
-echo "\"$INPUTFILEDATA\" using (\$1/3600):((\$12)/$SCALE)             w lines lw 1             lc rgb \"#0000FF\" title \"Previous load\", \\" >> /tmp/$OUTPUTFILE.plot
+# echo "\"$INPUTFILEDATA\" using (\$1/3600):((\$12)/$SCALE)             w lines lw 1             lc rgb \"#0000FF\" title \"Previous load\", \\" >> /tmp/$OUTPUTFILE.plot
 # echo "\"$INPUTFILEDATA\" using (\$1/3600):(32000/10)          w lines lw 2             lc rgb \"#0000FF\" title \"Max battery\", \\" >> /tmp/$OUTPUTFILE.plot
 # echo "\"$INPUTFILEDATA\" using (\$1/3600):(32000*0.8/10)      w lines lw 2             lc rgb \"#0000FF\" title \"Min battery\", \\" >> /tmp/$OUTPUTFILE.plot
 # Final line

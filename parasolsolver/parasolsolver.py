@@ -47,8 +47,20 @@ class ParasolModel:
 		
 		self.saveModel = False
 	
+	def isGreen(self):
+		return self.greenAvail != None
+	
+	def isBattery(self):
+		return self.options.batCap > 0.0
+	
+	def isBrown(self):
+		return self.brownPrice != None
+		
+	def isPUE(self):
+		return self.pue != None
+	
 	# Solve problem using Gurobi
-	def solve(self, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False):
+	def solve(self, load=None, greenAvail=None, brownPrice=None, pue=None, steps=False, stateChargeBattery=False, stateNetMeter=False, scale=1.0):
 		# Solution and objective
 		self.sol = None
 		self.obj = None
@@ -62,40 +74,48 @@ class ParasolModel:
 		# Model
 		m = Model("parasol")
 		m.setParam("OutputFlag", 0)
+		m.setParam("Method", 2) # Let's use this solver because the results are not random
+		m.setParam("MIPGap", 0.0)
 		if self.options.timeLimit > 0:
 			m.setParam("TimeLimit", self.options.timeLimit)
 
 		# Parameters
-		# Green availability
+		# Green availability: W
 		MaxGreenAvail = 0.0
-		if self.greenAvail != None:
-			GreenAvail = {}
+		GreenAvail = {}
+		if self.isGreen():
 			jG = 0
 			for t in range(0, self.options.maxTime):
 				ts = t*self.options.slotLength
 				while len(self.greenAvail)>jG+1 and self.greenAvail[jG+1].t <= ts:
 					jG += 1
-				GreenAvail[t] = self.greenAvail[jG].v
+				GreenAvail[t] = round(self.greenAvail[jG].v/scale, 4)
 				if GreenAvail[t] > MaxGreenAvail:
 					MaxGreenAvail = GreenAvail[t]
-		# Brown prices
-		if self.brownPrice != None:
-			BrownPrice = {}
+		else:
+			# No green available
+			for t in range(0, self.options.maxTime):
+				GreenAvail[t] = 0.0
+		
+		# Brown prices: $/kWh
+		BrownPrice = {}
+		if self.isBrown():
 			jB = 0
 			for t in range(0, self.options.maxTime):
 				# Look for current values
 				ts = t*self.options.slotLength
 				while len(self.brownPrice)>jB+1 and self.brownPrice[jB+1].t <= ts:
 					jB += 1
-				BrownPrice[t] = self.brownPrice[jB].v
+				BrownPrice[t] = round(self.brownPrice[jB].v, 4)
+		else:
+			# No brown price
+			for t in range(0, self.options.maxTime):
+				BrownPrice[t] = 0.0
+		
 		# PUE
 		PUE = {}
 		MaxPUE = 0.0
-		if self.pue == None:
-			# Default PUE
-			for t in range(0, self.options.maxTime):
-				PUE[t] = 1.0
-		else:
+		if self.isPUE():
 			jP = 0
 			for t in range(0, self.options.maxTime):
 				# Look for current values
@@ -104,29 +124,37 @@ class ParasolModel:
 					jP += 1
 				PUE[t] = self.pue[jP].v
 				if PUE[t] > MaxPUE:
-					MaxPUE = PUE[t]
+					MaxPUE = round(PUE[t], 4)
+		else:
+			# Default PUE
+			for t in range(0, self.options.maxTime):
+				PUE[t] = 1.0
 		PUE[-1] = PUE[0] # Set value for the battery
 		
-		# Workload
+		# Workload: W
 		MaxWorkload = 0.0
+		Workload = {}
 		if self.load != None:
-			Workload = {}
 			jW = 0
 			for t in range(0, self.options.maxTime):
 				ts = t*self.options.slotLength
 				while len(self.load)>jW+1 and self.load[jW+1].t <= ts:
 					jW += 1
-				Workload[t] = self.load[jW].v
+				Workload[t] = round(self.load[jW].v/scale, 2)
 				if Workload[t] > MaxWorkload:
 					MaxWorkload = Workload[t]
+		else:
+			# Default workload
+			for t in range(0, self.options.maxTime):
+				Workload[t] = 0.0
 		
-		# Check maximum size for the values
-		if self.largeNumber < MaxWorkload*MaxPUE:
-			self.largeNumber =  int(10*MaxWorkload*MaxPUE)
-		if self.largeNumber < MaxGreenAvail:
-			self.largeNumber =  int(10*MaxGreenAvail)
-		if self.largeNumber < self.options.maxSize*MaxPUE:
-			self.largeNumber = int(10*self.options.maxSize*MaxPUE)
+		# Check maximum sizes for values
+		if self.largeNumber < 10*MaxPUE*MaxWorkload:
+			self.largeNumber = int(10*MaxPUE*MaxWorkload)
+		if self.largeNumber < 10*MaxGreenAvail:
+			self.largeNumber = int(10*MaxGreenAvail)
+		if self.largeNumber < 10*MaxPUE*self.options.maxSize/scale:
+			self.largeNumber = int(10*MaxPUE*self.options.maxSize/scale)
 		
 		# Integrate new variables
 		m.update()
@@ -134,235 +162,188 @@ class ParasolModel:
 		# Variables
 		# Load
 		Load = {}
+		LoadGreen = {}
+		LoadBrown = {}
+		LoadBatt = {}
 		for t in range(0, self.options.maxTime):
-			Load[t] = m.addVar(lb=self.options.minSize, ub=self.options.maxSize, name="Load["+str(t)+"]")
-		if self.greenAvail != None:
-			LoadGreen = {}
-			for t in range(0, self.options.maxTime):
-				LoadGreen[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadGreen["+str(t)+"]")
-		if self.brownPrice != None:
-			LoadBrown = {}
-			for t in range(0, self.options.maxTime):
-				LoadBrown[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadBrown["+str(t)+"]")
+			if self.options.loadDelay:
+				# Load between boundaries; This is the original load and does not have PUE
+				minSize = (self.options.minSizeIni if t==0 else self.options.minSize)/scale
+				Load[t] = m.addVar(lb=minSize, ub=math.ceil(1.05*self.options.maxSize/scale), name="Load["+str(t)+"]")
+			else:
+				# Fixed size (minimum size)
+				minSize = (self.options.minSizeIni if t==0 else self.options.minSize)/scale
+				Load[t] = max(Workload[t], minSize)
+			LoadBrown[t] = m.addVar(ub=math.ceil(1.05*PUE[t]*self.options.maxSize/scale), name="LoadBrown["+str(t)+"]") if self.isBrown()   else 0.0
+			LoadBatt[t] =  m.addVar(ub=math.ceil(1.05*PUE[t]*self.options.maxSize/scale), name="LoadBatt["+str(t)+"]")  if self.isBattery() else 0.0
+			LoadGreen[t] = m.addVar(ub=math.ceil(1.05*PUE[t]*self.options.maxSize/scale), name="LoadGreen["+str(t)+"]") if self.isGreen()   else 0.0
 		
 		# Battery
-		if self.options.batCap > 0:
-			LoadBatt = {}
+		BattGreen = {}
+		BattBrown = {}
+		CapBattery = {}
+		if self.isBattery():
 			LoadBatt[-1] = 0.0
+			BattGreen[-1] = 0.0
+			BattBrown[-1] = 0.0
+			CapBattery[-1] = self.options.batIniCap/scale
+			if CapBattery[-1] > self.options.batCap/scale:
+				CapBattery[-1] = self.options.batCap/scale
 			for t in range(0, self.options.maxTime):
-				LoadBatt[t] = m.addVar(ub=self.options.maxSize*PUE[t], name="LoadBatt["+str(t)+"]")
-			# var BattGreen  {t in XTIME} >= 0;
-			if self.greenAvail != None:
-				BattGreen = {}
-				BattGreen[-1] = 0.0
-				for t in range(0, self.options.maxTime):
-					BattGreen[t] = m.addVar(name="BattGreen["+str(t)+"]")
-			if self.brownPrice != None:
-				BattBrown = {}
-				BattBrown[-1] = 0.0
-				for t in range(0, self.options.maxTime):
-					BattBrown[t] = m.addVar(name="BattBrown["+str(t)+"]")
-			CapBattery = {}
-			CapBattery[-1] = self.options.batIniCap
-			if CapBattery[-1] > self.options.batCap:
-				CapBattery[-1] = self.options.batCap
+				BattGreen[t] = m.addVar(name="BattGreen["+str(t)+"]") if self.isGreen() else 0.0
+				BattBrown[t] = m.addVar(name="BattBrown["+str(t)+"]") if self.isBrown() else 0.0
+				CapBattery[t] = m.addVar(ub=self.options.batCap/scale, name="CapBattery["+str(t)+"]") if self.isBattery() else 0.0
+		else:
+			# No battery
 			for t in range(0, self.options.maxTime):
-				CapBattery[t] = m.addVar(ub=self.options.batCap, name="CapBattery["+str(t)+"]")
-		
+				BattGreen[t] = 0.0
+				BattBrown[t] = 0.0
+				CapBattery[t] = 0.0
+		# TODO
+		#self.options.previousPeak = 0.0
+		#self.options.previousPeakLife = 0.0
 		# Peak costs
-		if self.brownPrice != None:
+		if self.isBrown():
 			if self.options.peakCost != None:
-				PeakBrown =     m.addVar(lb=0.0, ub=max(self.options.maxSize*MaxPUE+self.options.batChargeRate, self.options.previousPeak),     name="PeakBrown")
+				PeakBrown =     m.addVar(lb=0.0, ub=math.ceil(max((MaxPUE*1.05*self.options.maxSize + self.options.batChargeRate)/scale, 1.05*self.options.previousPeak/scale)),     name="PeakBrown")
 			if self.options.peakCostLife != None:
-				PeakBrownLife = m.addVar(lb=0.0, ub=max(self.options.maxSize*MaxPUE+self.options.batChargeRate, self.options.previousPeakLife), name="PeakBrownLife")
-			
+				PeakBrownLife = m.addVar(lb=0.0, ub=math.ceil(max((MaxPUE*1.05*self.options.maxSize + self.options.batChargeRate)/scale, 1.05*self.options.previousPeakLife/scale)), name="PeakBrownLife")
+		
 		# Net metering
-		if self.greenAvail != None and self.brownPrice != None:
-			NetGreen = {}
-			for t in range(0, self.options.maxTime):
+		NetGreen = {}
+		for t in range(0, self.options.maxTime):
+			if self.isGreen() and self.isBrown():
 				NetGreen[t] = m.addVar(name="NetGreen["+str(t)+"]")
+			else:
+				NetGreen[t] = 0.0
 		
 		# Finish variables declaration
 		m.update()
 		
+		# Constraints
+		# Load constraints
+		if self.load != None and self.options.loadDelay:
+			# Summation of powers have to be the power required by the workload
+			# Checking previous load is actually executed
+			sumLoad =     quicksum(Load[t] for t in range(0, self.options.maxTime))
+			sumWorkload = quicksum(Workload[t] for t in range(0, self.options.maxTime)) + (self.options.prevLoad/scale)/self.options.compression
+			m.addConstr(sumLoad >= sumWorkload, "WorkloadMin")
+			
+			# Guarrantee that the load is already there
+			for t in range(1, self.options.maxTime):
+				sumLoadT =     quicksum(Load[t] for t in range(0, t))
+				sumWorkloadT = quicksum(Workload[t] for t in range(0, t)) + (self.options.prevLoad/scale)/self.options.compression
+				m.addConstr(sumLoadT <= math.ceil(sumWorkloadT), "WorkloadMin[%d]" % t) # +1 to have some margin
+		
+		# Load distribution
+		for t in range(0, self.options.maxTime):
+			m.addConstr(PUE[t] * Load[t] == LoadGreen[t] + LoadBrown[t] + LoadBatt[t],  "LoadProvide[%d]" % t)
+		
+		# Maximum green availability
+		for t in range(0, self.options.maxTime):
+			if self.isGreen():
+				m.addConstr(LoadGreen[t] + BattGreen[t] + NetGreen[t] == GreenAvail[t], "MaxGreen[%d]" % t) # Make it tight
+		
+		# Battery
+		if self.isBattery():
+			# There seems to be a bug in Gurobi. If the initial battery is the maximum, it breaks
+			if CapBattery[-1] == self.options.batCap/scale:
+				CapBattery[-1] -= 0.001
+			# We cannot discharge more than available
+			for t in range(0, self.options.maxTime):
+				m.addConstr(LoadBatt[t] <= CapBattery[t], "CapBatteryT[%d]" % t)
+			# Charge battery
+			for t in range(0, self.options.maxTime):
+				m.addConstr(CapBattery[t] == CapBattery[t-1] + self.options.batEfficiency*(BattBrown[t-1] + BattGreen[t-1]) - LoadBatt[t-1], "ChargeBattery[%d]" % t)
+			# Maximum battery charge rate (kW)
+			if self.options.batChargeRate > 0.0 and (self.isGreen() or self.isBrown()):
+				# s.t. BattRate {t in TIME} :  <= self.options.batChargeRate
+				for t in range(0, self.options.maxTime):
+					m.addConstr(BattGreen[t] + BattBrown[t] <= self.options.batChargeRate/scale, "BattRate[%d]" % t)
+			# Maximum depth of discharge (to extend battery lfietime)
+			if self.options.batDischargeMax != None:
+				# Calculate the minimum battery level
+				minPercentage = 1.0 - self.options.batDischargeMax
+				# System protection: it is usually 20%
+				if self.options.batDischargeProtection != None:
+					if minPercentage < self.options.batDischargeProtection-0.001:
+						minPercentage = self.options.batDischargeProtection
+				# Adapt DoD taking into account initial capacity
+				if CapBattery[-1]/(self.options.batCap/scale) < minPercentage:
+					minPercentage = CapBattery[-1]/(self.options.batCap/scale)
+				# Depth of discharge
+				for t in range(0, self.options.maxTime):
+					m.addConstr(CapBattery[t] >= math.floor((self.options.batCap/scale)*minPercentage), "Batt[%d]" % t)
+		
+		# Peak cost constraints
+		if self.isBrown():
+			if self.options.peakCost != None:
+				for t in range(0, self.options.maxTime):
+					m.addConstr(PeakBrown >=     LoadBrown[t] + BattBrown[t],        "MinPeak[%d]" % t)
+				m.addConstr(PeakBrown    >= math.floor(self.options.previousPeak/scale), "MinPeak")
+			# Peak cost life constraints
+			if self.options.peakCostLife != None:
+				for t in range(0, self.options.maxTime):
+					m.addConstr(PeakBrownLife >= LoadBrown[t] + BattBrown[t],             "MinPeakLife[%d]" % t)
+				m.addConstr(PeakBrownLife >= math.floor(self.options.previousPeakLife/scale), "MinPeakLife")
+		
+		# Parasol constraints
+		# Constraints: We can only do one thing at a time
+		if self.isBattery() and (self.isBrown() or self.isGreen()):
+			for t in range(0, self.options.maxTime):
+				self.addConstrXlt0implYeq0(m,  LoadBatt[t], BattGreen[t] + BattBrown[t])
+		if self.isGreen():
+			for t in range(0, self.options.maxTime):
+				# LoadBrown > 0  => NetGreen = 0
+				if self.isBrown():
+					self.addConstrXlt0implYeq0(m, LoadBrown[t], NetGreen[t])
+				# LoadBatt > 0  => NetGreen + BattBrown + BattGreen = 0.0
+				if self.isBattery():
+					self.addConstrXlt0implYeq0(m, LoadBatt[t],  BattGreen[t] + ((NetGreen[t] + BattBrown[t]) if self.isBrown() else 0.0))
+				# BattGreen > 0 => LoadBrown = 0
+				#if self.isBattery() and self.isGreen() and self.isBrown():
+					#self.addConstrXlt0implYeq0(m, BattGreen[t], LoadBrown[t])
+				# BattGreen > 0 => NetGreen = 0
+				#if self.isBattery() and self.isGreen() and self.isBrown():
+					#self.addConstrXlt0implYeq0(m, BattGreen[t] + BattBrown[t], NetGreen[t])
+		
+		m.update()
+		
 		# Optimization function
 		optFunction = 0.0
-		if self.options.optCost>0.0 and self.brownPrice != None:
+		if self.options.optCost > 0.0 and self.isBrown():
 			optCost = 0.0
-			# Add energy costs for a day ($/day)
-			optCost += quicksum(LoadBrown[t]/1000.0 * BrownPrice[t] for t in range(0, self.options.maxTime)) # kWh x $/kWh = $
-			if self.options.batCap > 0:
-				optCost += quicksum(BattBrown[t]/1000.0 * BrownPrice[t] for t in range(0, self.options.maxTime)) # kWh x $/kWh = $
-			if self.greenAvail != None and self.options.netMeter!=None:
-				optCost -= quicksum(NetGreen[t]/1000.0 * self.options.netMeter*BrownPrice[t] for t in range(0, self.options.maxTime)) # kWh x $/kWh = $
-			#for t in range(0, self.options.maxTime):
-				#optCost += LoadBrown[t]/1000.0 * BrownPrice[t] # kWh x $/kWh = $
-				#if self.options.batCap > 0:
-					#optCost += BattBrown[t]/1000.0 * BrownPrice[t]# kWh x $/kWh = $
-				#if self.greenAvail != None and self.options.netMeter!=None:
-					#optCost -= NetGreen[t]/1000.0 * self.options.netMeter*BrownPrice[t] # kWh x $/kWh = $
+			# Add energy costs for a day ($/day): load, battery, and net metering
+			optCost += quicksum((BattBrown[t] + LoadBrown[t]) * BrownPrice[t]/1000.0     for t in range(0, self.options.maxTime)) # + kWh x $/kWh = $
+			optCost -= quicksum(NetGreen[t] * self.options.netMeter*BrownPrice[t]/1000.0 for t in range(0, self.options.maxTime)) # - kWh x $/kWh = $
 			# Add peak power cost in a linear way ($/day)
 			if self.options.peakCost != None:
-				optCost += PeakBrown/1000.0 * self.options.peakCost/30.0 # Account the month (30 days) for just one day: kW x $/kW/day = $/day
+				optCost += PeakBrown *     self.options.peakCost/1000.0/30.0 # Account the month (30 days) for just one day: kW x $/kW/day = $/day
 			# Add peak power cost for life time ($/day)
 			if self.options.peakCostLife != None:
 				optCost += PeakBrownLife * self.options.peakCostLife/(TOTAL_YEARS*365.0) # Account the building (12 years): W x ($/W)/day = $/day
 			# Add the final cost function to the optimization function
-			optFunction += self.options.optCost * optCost * 1000.0
+			optFunction += self.options.optCost * optCost #* 1000.0
 		
 		# Add a delta to avoid net metering and battery changes
-		if self.greenAvail != None and self.brownPrice != None and self.options.batCap > 0:
+		if self.isGreen() and self.isBrown() and self.isBattery():
 			if stateChargeBattery:
 				optFunction -= 0.0001*(BattGreen[0]+LoadGreen[0])
 			elif stateNetMeter:
 				optFunction -= 0.0001*(NetGreen[0]+LoadGreen[0])
+		
+		'''
+		# Try to keep the battery level as high as possible
+		if self.isBattery():
+			optFunction -= quicksum(100*CapBattery[t]/self.options.batCap for t in range(0, self.options.maxTime))
+		'''
 
 		# Dump objective function
-		#m.setObjective(optFunction, GRB.MAXIMIZE)
 		m.setObjective(optFunction, GRB.MINIMIZE)
 		
 		m.update()
 		
-		# Constraints
-		# Load constraints
-		if self.load != None:
-			if not self.options.loadDelay:
-				for t in range(0, self.options.maxTime):
-					#m.addConstr(Load[t] >= Workload[t], "WorkloadMin["+str(t)+"]")
-					m.addConstr(Load[t] == Workload[t], "WorkloadMin["+str(t)+"]") # Make it tight
-			else:
-				# Summation of powers have to be the power required by the workload
-				# Checking previous load is actually executed
-				if self.options.optPerf == 0:
-					sumLoad = quicksum(Load[t] for t in range(0, self.options.maxTime))
-					#sumWorkload = self.options.prevLoad + quicksum(Workload[t] for t in range(0, self.options.maxTime))
-					sumWorkload = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, self.options.maxTime))
-					#sumWorkload = (self.options.prevLoad + quicksum(Workload[t] for t in range(0, self.options.maxTime)))/self.options.compression
-					m.addConstr(sumLoad >= sumWorkload, "WorkloadMin")
-				else:
-					# We don't need to run everything if we try to minimize the difference
-					pass
-				
-				# Guarrantee that the load is already there
-				#for t in range(0, self.options.maxTime):
-				for t in range(1, self.options.maxTime):
-					sumLoadT = quicksum(Load[t] for t in range(0, t))
-					#sumWorkloadT = self.options.prevLoad + quicksum(Workload[t] for t in range(0, t))
-					sumWorkloadT = self.options.prevLoad/self.options.compression + quicksum(Workload[t] for t in range(0, t))
-					#sumWorkloadT = (self.options.prevLoad + quicksum(Workload[t] for t in range(0, t)))/self.options.compression
-					m.addConstr(sumLoadT <= sumWorkloadT, "WorkloadMin["+str(t)+"]") # +1 to have some margin
-			if self.options.minSizeIni != None:
-				m.addConstr(Load[0] >= self.options.minSizeIni, 'WorkloadMinInitial')
-		
-		# Load distribution
-		# s.t. LoadProvide {t in TIME} :   Load[t] =  LoadGreen[t] + LoadBatt[t];
-		# s.t. MaxSize {t in TIME} :       Load[t] <= maxSize;
-		for t in range(0, self.options.maxTime):
-			aux = 0
-			if self.greenAvail != None:
-				aux += LoadGreen[t]
-			if self.brownPrice != None:
-				aux += LoadBrown[t]
-			if self.options.batCap > 0:
-				aux += LoadBatt[t]
-			m.addConstr(PUE[t] * Load[t] == aux,  "LoadProvide["+str(t)+"]")
-		
-		# Maximum green availability
-		# s.t. MaxGreen {t in TIME} :      LoadGreen[t] + BattGreen[t] + NetGreen[t] <= GreenAvail[t]"
-		for t in range(0, self.options.maxTime):
-			if self.greenAvail != None:
-				aux = 0
-				if self.options.batCap > 0:
-					aux += BattGreen[t]
-				if self.greenAvail != None and self.brownPrice != None:
-					aux += NetGreen[t]
-				#m.addConstr(LoadGreen[t] + aux <= GreenAvail[t], "MaxGreen["+str(t)+"]")
-				m.addConstr(LoadGreen[t] + aux == GreenAvail[t], "MaxGreen["+str(t)+"]") # Make it tight
-		
-		# Battery
-		if self.options.batCap > 0:
-			# There seems to be a bug in Gurobi. If the initial battery is the maximum, it breaks
-			if CapBattery[-1] == self.options.batCap:
-				CapBattery[-1] -= 0.001
-			# We cannot discharge more than available
-			for t in range(0, self.options.maxTime):
-				m.addConstr(LoadBatt[t] <= CapBattery[t], "CapBatteryT["+str(t)+"]")
-			# Charge battery
-			for t in range(0, self.options.maxTime):
-				aux = 0
-				if self.brownPrice != None:
-					aux += BattBrown[t-1]
-				if self.greenAvail != None:
-					aux += BattGreen[t-1]
-				m.addConstr(CapBattery[t] == CapBattery[t-1] + self.options.batEfficiency*aux - LoadBatt[t-1], "ChargeBattery["+str(t)+"]")
-			# Maximum battery charge rate (kW)
-			if self.options.batChargeRate > 0 and (self.greenAvail != None or self.brownPrice != None):
-				# s.t. BattRate {t in TIME} :  <= self.options.batChargeRate
-				for t in range(0, self.options.maxTime):
-					aux = 0
-					if self.greenAvail != None:
-						aux += BattGreen[t]
-					if self.brownPrice != None:
-						aux += BattBrown[t]
-					m.addConstr(aux <= self.options.batChargeRate, "BattRate["+str(t)+"]")
-			# Maximum depth of discharge (to extend battery lfietime)
-			if self.options.batDischargeMax != None:
-				minPercentage = 1.0 - self.options.batDischargeMax
-				# Adapt DoD taking into account initial capacity
-				if CapBattery[-1]/self.options.batCap < minPercentage:
-					minPercentage = CapBattery[-1]/self.options.batCap
-				# System protection: it is usually 15%+10% = 25%
-				if self.options.batDischargeProtection != None:
-					if self.options.batDischargeProtection > minPercentage:
-						minPercentage = self.options.batDischargeProtection
-				# Depth of discharge
-				for t in range(0, self.options.maxTime):
-					#m.addConstr(CapBattery[t] >= self.options.batCap*(1.0 - batDischargeMax), "Batt["+str(t)+"]")
-					m.addConstr(CapBattery[t] >= self.options.batCap*minPercentage, "Batt["+str(t)+"]")
-			'''
-			# System protection: it is usually 15%+10% = 25%
-			if self.options.batDischargeProtection != None:
-				for t in range(0, self.options.maxTime):
-					m.addConstr(CapBattery[t] >= self.options.batCap*self.options.batDischargeProtection, "BattProtection["+str(t)+"]")
-			'''
-		
-		# Peak cost constraints
-		if self.options.peakCost != None and self.brownPrice != None:
-			for t in range(0, self.options.maxTime):
-				aux = LoadBrown[t]
-				if self.options.batCap > 0:
-					aux += BattBrown[t]
-				m.addConstr(aux <= PeakBrown, "Peak["+str(t)+"]")
-			m.addConstr(self.options.previousPeak <= PeakBrown)
-		# Peak cost constraints
-		if self.options.peakCostLife != None and self.brownPrice != None:
-			for t in range(0, self.options.maxTime):
-				aux = LoadBrown[t]
-				if self.options.batCap > 0:
-					aux += BattBrown[t]
-				m.addConstr(aux <= PeakBrownLife, "Peak["+str(t)+"]")
-			m.addConstr(self.options.previousPeakLife <= PeakBrownLife)
-		
-		# Parasol constraints
-		# Constraints: We can only do one thing at a time
-		for t in range(0, self.options.maxTime):
-			# LoadBrown > 0  => NetGreen = 0
-			if self.brownPrice != None and self.greenAvail != None:
-				self.addConstrXlt0implYeq0(m, LoadBrown[t], NetGreen[t])
-			# LoadBatt > 0  => NetGreen + BattBrown + BattGreen = 0 
-			if self.options.batCap > 0 and self.greenAvail != None:
-				self.addConstrXlt0implYeq0(m, LoadBatt[t],  BattGreen[t] + ((NetGreen[t] + BattBrown[t]) if self.brownPrice != None else 0))
-			# BattGreen > 0 => LoadBrown = 0
-			#if self.options.batCap > 0 and self.greenAvail != None and self.brownPrice != None:
-				#self.addConstrXlt0implYeq0(m, BattGreen[t], LoadBrown[t])
-			# BattGreen > 0 => NetGreen = 0
-			#if self.options.batCap > 0 and self.greenAvail != None and self.brownPrice != None:
-				#self.addConstrXlt0implYeq0(m, BattGreen[t] + BattBrown[t], NetGreen[t])
-		
-		m.update()
-		
 		# Solver parameters
-		
 		#m.setParam("OutputFlag", 1)
 		#m.setParam("MIPGap", 0.0)
 		#m.setParam("FeasibilityTol", 1e-09)
@@ -371,22 +352,25 @@ class ParasolModel:
 		#m.setParam("Quad", 1)
 		#m.setParam("ObjScale", 1)
 		if self.saveModel:
-			m.write('test.mps')
+			print 'Saving model...'
+			m.write('test.lp')
 		
 		# Solve
 		m.optimize()
 		
+		'''
 		if self.saveModel:
-			#print 'SOLUUUUUUUUUUUUUUUUUUTION'
-			#print LoadBrown[0].x, LoadGreen[0].x, LoadBatt[0].x
-			#print 'SOLUUUUUUUUUUUUUUUUUUTION'
+			print LoadBrown[0].x, LoadGreen[0].x, LoadBatt[0].x
 			m = read('test.mps')
 			m.optimize()
 			#print m.getVars()
 			self.sol = {}
 			for var in m.getVars():
-				self.sol[str(var).split(' ')[1]] = var.x		
+				self.sol[str(var).split(' ')[1]] = var.x	
+		'''
 		
+		
+		# Read solver status
 		if m.status == GRB.status.LOADED:
 			print "Loaded"
 		elif m.status == GRB.status.INFEASIBLE:
@@ -424,61 +408,63 @@ class ParasolModel:
 			if m.status != GRB.status.INF_OR_UNBD and m.status != GRB.status.INFEASIBLE:
 				self.obj = m.objVal
 				self.sol = {}
-				# Parameters
-				for t in range(0, self.options.maxTime):
-					# Workload
-					if self.load != None:
-						self.sol["Workload["+str(t)+"]"] = Workload[t]
-					if self.brownPrice != None:
-						self.sol["BrownPrice["+str(t)+"]"] = BrownPrice[t]
 				# Variables
 				for t in range(0, self.options.maxTime):
-					self.sol["Load["+str(t)+"]"] = Load[t].x
-					if self.greenAvail != None:
-						self.sol["LoadGreen["+str(t)+"]"] = LoadGreen[t].x
-						if self.sol["LoadGreen["+str(t)+"]"] < 1:
+					if self.options.loadDelay:
+						self.sol["Load["+str(t)+"]"] = Load[t].x*scale
+					else:
+						self.sol["Load["+str(t)+"]"] = Load[t]*scale
+					if self.isGreen():
+						self.sol["LoadGreen["+str(t)+"]"] = LoadGreen[t].x*scale
+						if self.sol["LoadGreen["+str(t)+"]"] < 0.1:
 							self.sol["LoadGreen["+str(t)+"]"] = 0.0
-					if self.brownPrice != None:
-						self.sol["LoadBrown["+str(t)+"]"] = LoadBrown[t].x
-						if self.sol["LoadBrown["+str(t)+"]"] < 1:
+					if self.isBrown():
+						self.sol["LoadBrown["+str(t)+"]"] = LoadBrown[t].x*scale
+						if self.sol["LoadBrown["+str(t)+"]"] < 0.1:
 							self.sol["LoadBrown["+str(t)+"]"] = 0.0
-					if self.options.batCap > 0:
-						self.sol["LoadBatt["+str(t)+"]"] = LoadBatt[t].x
-						if self.sol["LoadBatt["+str(t)+"]"] < 1:
+					if self.isBattery():
+						self.sol["LoadBatt["+str(t)+"]"] = LoadBatt[t].x*scale
+						if self.sol["LoadBatt["+str(t)+"]"] < 0.1:
 							self.sol["LoadBatt["+str(t)+"]"] = 0.0
-						if self.greenAvail != None:
-							self.sol["BattGreen["+str(t)+"]"] = BattGreen[t].x
-							if self.sol["BattGreen["+str(t)+"]"] < 1:
+						if self.isGreen():
+							self.sol["BattGreen["+str(t)+"]"] = BattGreen[t].x*scale
+							if self.sol["BattGreen["+str(t)+"]"] < 0.1:
 								self.sol["BattGreen["+str(t)+"]"] = 0.0
-						if self.brownPrice != None:
-							self.sol["BattBrown["+str(t)+"]"] = BattBrown[t].x
-							if self.sol["BattBrown["+str(t)+"]"] < 1:
+						if self.isBrown():
+							self.sol["BattBrown["+str(t)+"]"] = BattBrown[t].x*scale
+							if self.sol["BattBrown["+str(t)+"]"] < 0.1:
 								self.sol["BattBrown["+str(t)+"]"] = 0.0
-						self.sol["CapBattery["+str(t)+"]"] = CapBattery[t].x
-					if self.brownPrice != None and self.greenAvail != None:
-						self.sol["NetGreen["+str(t)+"]"] = NetGreen[t].x
-						if self.sol["NetGreen["+str(t)+"]"] < 1:
+						self.sol["CapBattery["+str(t)+"]"] = CapBattery[t].x*scale
+					if self.isBrown() and self.isGreen():
+						self.sol["NetGreen["+str(t)+"]"] = NetGreen[t].x*scale
+						if self.sol["NetGreen["+str(t)+"]"] < 0.1:
 							self.sol["NetGreen["+str(t)+"]"] = 0.0
 					# Default values
+					if "Load["+str(t)+"]" not in self.sol:
+						self.sol["Load["+str(t)+"]"] = 0.0
 					if "LoadBrown["+str(t)+"]" not in self.sol:
 						self.sol["LoadBrown["+str(t)+"]"] = 0.0
+					if "LoadGreen["+str(t)+"]" not in self.sol:
+						self.sol["LoadGreen["+str(t)+"]"] = 0.0
+					if "LoadBatt["+str(t)+"]" not in self.sol:
+						self.sol["LoadBatt["+str(t)+"]"] = 0.0
 					if "BattBrown["+str(t)+"]" not in self.sol:
 						self.sol["BattBrown["+str(t)+"]"] = 0.0
 					if "BattGreen["+str(t)+"]" not in self.sol:
 						self.sol["BattGreen["+str(t)+"]"] = 0.0
-					if "LoadBatt["+str(t)+"]" not in self.sol:
-						self.sol["LoadBatt["+str(t)+"]"] = 0.0
 					if "NetGreen["+str(t)+"]" not in self.sol:
 						self.sol["NetGreen["+str(t)+"]"] = 0.0
-				if self.options.peakCost!=None and self.brownPrice != None:
-					self.sol["PeakBrown"] = PeakBrown.x
+				# Peak brown
+				if self.options.peakCost!=None and self.isBrown():
+					self.sol["PeakBrown"] = PeakBrown.x*scale
 				else:
 					self.sol["PeakBrown"] = 0.0
 					for t in range(0, self.options.maxTime):
 						if self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"] > self.sol["PeakBrown"]:
 							self.sol["PeakBrown"] = self.sol["LoadBrown["+str(t)+"]"] + self.sol["BattBrown["+str(t)+"]"]
-				if self.options.peakCostLife!=None and self.brownPrice != None:
-					self.sol["PeakBrownLife"] = PeakBrownLife.x
+				# Peak brown life
+				if self.options.peakCostLife!=None and self.isBrown():
+					self.sol["PeakBrownLife"] = PeakBrownLife.x*scale
 				else:
 					self.sol["PeakBrownLife"] = 0.0
 					for t in range(0, self.options.maxTime):
@@ -601,7 +587,7 @@ class ParasolModel:
 				if "BattBrown["+str(t)+"]" in self.sol:
 					useBrown += self.sol["BattBrown["+str(t)+"]"]
 				# Brown price
-				if self.brownPrice != None:
+				if self.isBrown():
 					if priceBrown < PRICE_THRES:
 						useBrownCheap = useBrown
 						useBrownExpen = 0.0
@@ -695,11 +681,11 @@ class ParasolModel:
 				ts = t*self.options.slotLength
 				jG = jB = jL = 0
 				curGreen = 0.0
-				if self.greenAvail != None:
+				if self.isGreen():
 					while len(self.greenAvail)>jG+1 and self.greenAvail[jG+1].t <= ts: jG += 1 # Green
 					curGreen = self.greenAvail[jG].v
 				priceBrown = 0.0
-				if self.brownPrice != None:
+				if self.isBrown():
 					while len(self.brownPrice)>jB+1 and self.brownPrice[jB+1].t <= ts: jB += 1 # Brown
 					priceBrown = self.brownPrice[jB].v
 				curLoad = 0.0
@@ -731,7 +717,7 @@ class ParasolModel:
 				if "BattBrown["+str(t)+"]" in self.sol:
 					useBrown += self.sol["BattBrown["+str(t)+"]"]
 				# Brown price
-				if self.brownPrice != None:
+				if self.isBrown():
 					if priceBrown < PRICE_THRES:
 						useBrownCheap = useBrown
 						useBrownExpen = 0.0
@@ -741,7 +727,7 @@ class ParasolModel:
 				# Battery
 				useBatte = 0.0
 				capBatte = 0.0
-				if self.options.batCap > 0:
+				if self.isBattery():
 					if "LoadBatt["+str(t)+"]" in self.sol: 
 						useBatte = self.sol["LoadBatt["+str(t)+"]"]
 					if "CapBattery["+str(t)+"]" in self.sol: 
@@ -899,45 +885,45 @@ if __name__=='__main__':
 	'''
 	
 	# DEBUGGING
-	brownPrice = [TimeValue(0, 0.117500), 
-		TimeValue(3600, 0.117500), 
-		TimeValue(7200, 0.117500), 
-		TimeValue(10800, 0.117500), 
-		TimeValue(14400, 0.117500), 
-		TimeValue(18000, 0.117500), 
+	brownPrice = [TimeValue(0, 0.080020), 
+		TimeValue(3600, 0.080020), 
+		TimeValue(7200, 0.080020), 
+		TimeValue(10800, 0.080020), 
+		TimeValue(14400, 0.080020), 
+		TimeValue(18000, 0.080020), 
 		TimeValue(21600, 0.117500), 
 		TimeValue(25200, 0.117500), 
-		TimeValue(28800, 0.080017), 
-		TimeValue(32400, 0.080017), 
-		TimeValue(36000, 0.080017), 
-		TimeValue(39600, 0.080017), 
-		TimeValue(43200, 0.080017), 
-		TimeValue(46800, 0.080017), 
-		TimeValue(50400, 0.080017), 
-		TimeValue(54000, 0.080017), 
-		TimeValue(57600, 0.080017), 
-		TimeValue(61200, 0.080017), 
+		TimeValue(28800, 0.117500), 
+		TimeValue(32400, 0.117500), 
+		TimeValue(36000, 0.117500), 
+		TimeValue(39600, 0.117500), 
+		TimeValue(43200, 0.117500), 
+		TimeValue(46800, 0.117500), 
+		TimeValue(50400, 0.117500), 
+		TimeValue(54000, 0.117500), 
+		TimeValue(57600, 0.117500), 
+		TimeValue(61200, 0.117500), 
 		TimeValue(64800, 0.117500), 
 		TimeValue(68400, 0.117500), 
-		TimeValue(72000, 0.117500), 
-		TimeValue(75600, 0.117500), 
-		TimeValue(79200, 0.117500), 
-		TimeValue(82800, 0.117500)]
+		TimeValue(72000, 0.080020), 
+		TimeValue(75600, 0.080020), 
+		TimeValue(79200, 0.080020), 
+		TimeValue(82800, 0.080020)]
 	greenAvail = [TimeValue(0, 0.000000), 
 		TimeValue(3600, 0.000000), 
 		TimeValue(7200, 0.000000), 
 		TimeValue(10800, 0.000000), 
 		TimeValue(14400, 0.000000), 
-		TimeValue(18000, 0.000000), 
-		TimeValue(21600, 0.000000), 
-		TimeValue(25200, 0.000000), 
-		TimeValue(28800, 0.000000), 
-		TimeValue(32400, 0.000000), 
-		TimeValue(36000, 0.000000), 
-		TimeValue(39600, 0.000000), 
-		TimeValue(43200, 0.000000), 
-		TimeValue(46800, 0.000000), 
-		TimeValue(50400, 0.000000), 
+		TimeValue(18000, 5372.775500), 
+		TimeValue(21600, 875083.436700), 
+		TimeValue(25200, 1860179.993400), 
+		TimeValue(28800, 2662650.000000), 
+		TimeValue(32400, 3215550.000000), 
+		TimeValue(36000, 4219500.000000), 
+		TimeValue(39600, 3317400.000000), 
+		TimeValue(43200, 2677200.000000), 
+		TimeValue(46800, 1634422.818400), 
+		TimeValue(50400, 702009.437700), 
 		TimeValue(54000, 0.000000), 
 		TimeValue(57600, 0.000000), 
 		TimeValue(61200, 0.000000), 
@@ -947,54 +933,54 @@ if __name__=='__main__':
 		TimeValue(75600, 0.000000), 
 		TimeValue(79200, 0.000000), 
 		TimeValue(82800, 0.000000)]
-	puePredi = [TimeValue(0, 1.187609), 
-		TimeValue(3600, 1.187609), 
-		TimeValue(7200, 1.166087), 
-		TimeValue(10800, 1.136739), 
-		TimeValue(14400, 1.126304), 
-		TimeValue(18000, 1.115217), 
-		TimeValue(21600, 1.119130), 
-		TimeValue(25200, 1.122391), 
-		TimeValue(28800, 1.122391), 
-		TimeValue(32400, 1.126304), 
-		TimeValue(36000, 1.119130), 
-		TimeValue(39600, 1.115217), 
-		TimeValue(43200, 1.111304), 
-		TimeValue(46800, 1.111304), 
-		TimeValue(50400, 1.115217), 
-		TimeValue(54000, 1.108043), 
-		TimeValue(57600, 1.108043), 
-		TimeValue(61200, 1.129565), 
-		TimeValue(64800, 1.147826), 
-		TimeValue(68400, 1.169348), 
-		TimeValue(72000, 1.180435), 
-		TimeValue(75600, 1.194783), 
-		TimeValue(79200, 1.194783), 
-		TimeValue(82800, 1.194783)]
-	worklPredi = [TimeValue(0, 3381786.689509), 
-		TimeValue(3600, 3576087.988509), 
-		TimeValue(7200, 3870235.030619), 
-		TimeValue(10800, 4155499.063240), 
-		TimeValue(14400, 4425937.380049), 
-		TimeValue(18000, 4561783.027205), 
-		TimeValue(21600, 4473279.958272), 
-		TimeValue(25200, 4178951.303588), 
-		TimeValue(28800, 3541607.605988), 
-		TimeValue(32400, 2863838.329942), 
-		TimeValue(36000, 2118686.189819), 
-		TimeValue(39600, 1543440.407169), 
-		TimeValue(43200, 1251385.686973), 
-		TimeValue(46800, 1120830.945292), 
-		TimeValue(50400, 1259456.634470), 
-		TimeValue(54000, 1477364.739694), 
-		TimeValue(57600, 1827444.704996), 
-		TimeValue(61200, 2133174.794860), 
-		TimeValue(64800, 2365043.625660), 
-		TimeValue(68400, 2549364.176339), 
-		TimeValue(72000, 2654499.693480), 
-		TimeValue(75600, 2766692.256109), 
-		TimeValue(79200, 2890722.461219), 
-		TimeValue(82800, 3034743.237055)]
+	puePredi = [TimeValue(0, 1.050000), 
+		TimeValue(3600, 1.050000), 
+		TimeValue(7200, 1.050000), 
+		TimeValue(10800, 1.050000), 
+		TimeValue(14400, 1.050000), 
+		TimeValue(18000, 1.050000), 
+		TimeValue(21600, 1.050000), 
+		TimeValue(25200, 1.050000), 
+		TimeValue(28800, 1.050000), 
+		TimeValue(32400, 1.050000), 
+		TimeValue(36000, 1.050000), 
+		TimeValue(39600, 1.050000), 
+		TimeValue(43200, 1.050000), 
+		TimeValue(46800, 1.050000), 
+		TimeValue(50400, 1.050000), 
+		TimeValue(54000, 1.050000), 
+		TimeValue(57600, 1.050000), 
+		TimeValue(61200, 1.050000), 
+		TimeValue(64800, 1.050000), 
+		TimeValue(68400, 1.050000), 
+		TimeValue(72000, 1.050000), 
+		TimeValue(75600, 1.050000), 
+		TimeValue(79200, 1.050000), 
+		TimeValue(82800, 1.050000)]
+	worklPredi = [TimeValue(0, 1486975.600000), 
+		TimeValue(3600, 1394976.000000), 
+		TimeValue(7200, 1555740.000000), 
+		TimeValue(10800, 1799122.000000), 
+		TimeValue(14400, 2180221.000000), 
+		TimeValue(18000, 2513255.000000), 
+		TimeValue(21600, 2766128.000000), 
+		TimeValue(25200, 2982744.000000), 
+		TimeValue(28800, 3138946.000000), 
+		TimeValue(32400, 3296220.000000), 
+		TimeValue(36000, 3455283.000000), 
+		TimeValue(39600, 3663972.000000), 
+		TimeValue(43200, 3955359.000000), 
+		TimeValue(46800, 4275713.000000), 
+		TimeValue(50400, 4644344.000000), 
+		TimeValue(54000, 4951055.000000), 
+		TimeValue(57600, 5154601.000000), 
+		TimeValue(61200, 5220432.000000), 
+		TimeValue(64800, 5056746.000000), 
+		TimeValue(68400, 4682364.000000), 
+		TimeValue(72000, 3956843.000000), 
+		TimeValue(75600, 3208103.000000), 
+		TimeValue(79200, 2420659.000000), 
+		TimeValue(82800, 1815520.000000)]
 	stateChargeBattery = False
 	stateNetMeter = False
 	
@@ -1007,17 +993,17 @@ if __name__=='__main__':
 	solver.options.maxSize =    5741520.0
 	solver.options.netMeter = 0.4
 	solver.options.batEfficiency = 0.87
-	solver.options.batIniCap = 20062636.6517
-	solver.options.batCap = 100000000.0
-	solver.options.batDischargeMax = 0.8
+	solver.options.batIniCap = 5424622.42215
+	solver.options.batCap = 10000000.0
+	solver.options.batDischargeMax = 0.44326171875
 	solver.options.batDischargeProtection = 0.2
 	solver.options.batChargeRate = 0
-	solver.options.prevLoad = 9957497.60376
-	solver.options.previousPeak = 4539262.54908
-	solver.options.previousPeakLife = 4539262.54908
+	solver.options.prevLoad = 0.0
+	solver.options.previousPeak = 4438341.3756
+	solver.options.previousPeakLife = 4661442.57956
 	solver.options.peakCost = 5.59
 	solver.options.peakCostLife = 10.0
-	
+
 	tnow = datetime.now()
 	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload)
 	#obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, load=workload, stateChargeBattery=False)

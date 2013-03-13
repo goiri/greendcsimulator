@@ -28,6 +28,8 @@ if [ $BASECOST != "0" ]; then
 	BASECOST=`head -2 $INPUTFILEDATA | tail -1 | awk '{print $3}'`
 fi
 
+SCALE=1000000
+
 # Create plot file
 echo "set term svg  size 1280,800" > /tmp/$OUTPUTFILE.plot
 echo "set out \"$OUTPUTFILE\"" >>    /tmp/$OUTPUTFILE.plot
@@ -37,22 +39,22 @@ echo "set lmargin 0" >> /tmp/$OUTPUTFILE.plot
 echo "set rmargin 0" >> /tmp/$OUTPUTFILE.plot
 echo "set tmargin 0" >> /tmp/$OUTPUTFILE.plot
 echo "set bmargin 0" >> /tmp/$OUTPUTFILE.plot
-echo "set zrange [10:28]" >> /tmp/$OUTPUTFILE.plot
+echo "set zrange [0:]" >> /tmp/$OUTPUTFILE.plot
 if [ $BASECOST != "0" ]; then
-	echo "set zrange [10:$BASECOST/1000]" >> /tmp/$OUTPUTFILE.plot
+	echo "set zrange [0:$BASECOST/$SCALE]" >> /tmp/$OUTPUTFILE.plot
 fi
-echo "set xlabel \"Solar (kW)\"" >> /tmp/$OUTPUTFILE.plot
-echo "set ylabel \"Battery (kWh)\" offset -5,0" >> /tmp/$OUTPUTFILE.plot
-echo "set zlabel \"Total cost 15 years (k$)\" rotate by 90 right offset +12,0" >> /tmp/$OUTPUTFILE.plot
+echo "set xlabel \"Solar (MW)\"" >> /tmp/$OUTPUTFILE.plot
+echo "set ylabel \"Battery (MWh)\" offset -5,0" >> /tmp/$OUTPUTFILE.plot
+echo "set zlabel \"Total cost 12 years (M$)\" rotate by 90 right offset +12,0" >> /tmp/$OUTPUTFILE.plot
 echo "set ticslevel 0" >> /tmp/$OUTPUTFILE.plot
 
 echo  "splot \\" >> /tmp/$OUTPUTFILE.plot
 i=3
 LOCATIONS="Newark Quito"
 for LOCATION in $LOCATIONS; do
-	echo "\"$INPUTFILEDATA\" using (\$1/1000):(\$2/1000):(\$$i/1000) w lines title \"Non-deferrable ($LOCATION)\",\\" >> /tmp/$OUTPUTFILE.plot
+	echo "\"$INPUTFILEDATA\" using (\$1/$SCALE):(\$2/$SCALE):(\$$i/$SCALE) w lines title \"Non-deferrable ($LOCATION)\",\\" >> /tmp/$OUTPUTFILE.plot
 	let i=$i+1
-	echo "\"$INPUTFILEDATA\" using (\$1/1000):(\$2/1000):(\$$i/1000) w lines title \"Deferrable ($LOCATION)\",\\" >> /tmp/$OUTPUTFILE.plot
+	echo "\"$INPUTFILEDATA\" using (\$1/$SCALE):(\$2/$SCALE):(\$$i/$SCALE) w lines title \"Deferrable ($LOCATION)\",\\" >> /tmp/$OUTPUTFILE.plot
 	let i=$i+1
 done
 # Line with the base cost

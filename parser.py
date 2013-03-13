@@ -132,6 +132,7 @@ class Experiment:
 		self.result = result
 		self.batterylifetime = batterylifetime
 		self.progress = progress
+		self.errors = 0
 	
 	# Read experiment from filename
 	@classmethod
@@ -472,6 +473,7 @@ def saveDetails(experiment):
 		
 		fout.write('<h1>Log</h1>\n')
 		fout.write('<ul>\n')
+		fout.write('  <li>Errors: %d</li>\n' % experiment.errors)
 		fout.write('  <li><a href="%s">Log file</a></li>\n' % (experiment.getFilename()+'.log'))
 		fout.write('</ul>\n')
 		
@@ -527,8 +529,8 @@ def writeExperimentHeader(fout):
 	fout.write('  <tr>\n')
 	# Setup
 	fout.write('    <th></th>\n')
-	fout.write('    <th width="70px">Period</th>\n')
-	fout.write('    <th width="70px">DC Size</th>\n')
+	fout.write('    <th width="60px">Period</th>\n')
+	fout.write('    <th width="100px">DC Size</th>\n')
 	fout.write('    <th width="70px">Cooling</th>\n')
 	fout.write('    <th width="80px">Location</th>\n')
 	fout.write('    <th width="80px">Net meter</th>\n')
@@ -566,7 +568,7 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 	fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (experiment.getFilename()+'.html', experimentDescription))
 	# Setup
 	fout.write('<td align="right">%s</td>\n' % (timeStr(experiment.scenario.period)))
-	fout.write('<td align="center">%s (%s)</td>\n' % (powerStr(experiment.setup.itsize), powerStr(experiment.result.peakpower)))
+	fout.write('<td align="right">%s (%s)</td>\n' % (powerStr(experiment.setup.itsize), powerStr(experiment.result.peakpower)))
 	fout.write('<td align="center">%s</td>\n' % ('-' if experiment.setup.cooling == None or experiment.setup.cooling.lower() == 'none' else experiment.setup.cooling.title()))
 	fout.write('<td align="right">%s</td>\n' % (experiment.setup.location.replace('_', ' ').title()[0:10]))
 	fout.write('<td align="right">%.1f%%</td>\n' % (experiment.scenario.netmeter*100.0))
@@ -590,18 +592,18 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 	#fout.write('<td align="right">%s</td>\n' % costStr(experiment.cost.peak))
 	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(experiment.cost.getOPEX()))
 	fout.write('<td>\n')
-	fout.write(getBarChart([experiment.cost.energy, experiment.cost.peak], 4*1000*1000, width=100)) # 2.5 * 1000
+	fout.write(getBarChart([experiment.cost.energy, experiment.cost.peak], 4*1000*1000, width=100, color=['brown', 'yellow'])) # 2.5 * 1000
 	fout.write('</td>\n')
 	fout.write('<td align="right">%s</td>\n' % costStr(experiment.cost.getCAPEX()))
 	# Total cost
 	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(experiment.cost.getTotal()))
 	fout.write('<td>\n')
-	fout.write(getBarChart([experiment.cost.energy, experiment.cost.peak, experiment.cost.capex], 150*1000*1000, width=150)) # 16*1000
+	fout.write(getBarChart([experiment.cost.building, experiment.cost.energy, experiment.cost.peak, experiment.cost.capex-experiment.cost.building], 150*1000*1000, width=150, color=['black', 'brown', 'yellow', 'green'])) # 16*1000
 	fout.write('</td>\n')
 	# Total in N years
 	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(experiment.cost.getOPEX()*TOTAL_YEARS + experiment.cost.getCAPEX()))
 	fout.write('<td>\n')
-	fout.write(getBarChart([experiment.cost.energy*TOTAL_YEARS, experiment.cost.peak*TOTAL_YEARS, experiment.cost.capex], 200*1000*1000, width=150)) # 44*1000
+	fout.write(getBarChart([experiment.cost.building, experiment.cost.energy*TOTAL_YEARS, experiment.cost.peak*TOTAL_YEARS, experiment.cost.capex-experiment.cost.building], 200*1000*1000, width=150, color=['black', 'brown', 'yellow', 'green'])) # 44*1000
 	fout.write('</td>\n')
 	
 	# Calculate ammortization
@@ -663,6 +665,8 @@ if __name__ == "__main__":
 			batmaxdischarge = None
 			battotaldischarge = None
 			batlifetime = None
+			# Solver errors
+			errors = 0
 			# Timing
 			lastTime = 0
 			try:
@@ -694,6 +698,13 @@ if __name__ == "__main__":
 								battotaldischarge = float(line.split(' ')[4][:-1])
 							elif line.startswith('# Battery lifetime:'):
 								batlifetime = float(line.split(' ')[3][:-1])
+							elif line.startswith('# Solver error at'):
+								errors += 1
+								#print filename, line[2:]
+							elif line.startswith('# Solver errors'):
+								errors = int(line.split(' ')[3])
+								if errors > 0:
+									print filename, ' solver errors', errors
 						else:
 							try:
 								expTime = int(line.split('\t')[0])
@@ -703,8 +714,9 @@ if __name__ == "__main__":
 								print 'Error reading log file', line, e
 			except Exception, e:
 				print 'Cannot read file', LOG_PATH+filename, e
+				
+			experiment.errors = errors
 			experiment.progress = 100.0*lastTime/experiment.scenario.period
-			
 			if experiment.progress < 100.0:
 				expRunni += 1
 			expTotal += 1
@@ -773,34 +785,38 @@ if __name__ == "__main__":
 			fout.write('  <td><a href="summary-%s.html">%s</a></td>\n' % (experiment.scenario.workload, experiment.scenario.workload.title()))
 			# Base
 			fout.write('  <td><a href="%s.html">%s</td>\n' % (experiment.getFilename(), costStr(baseexperiment.cost.getOPEX()*TOTAL_YEARS + baseexperiment.cost.getCAPEX())))
-			fout.write('  <td>' + getBarChart([baseexperiment.cost.energy*TOTAL_YEARS, baseexperiment.cost.peak*TOTAL_YEARS, baseexperiment.cost.capex], 24*1000)+'</td>\n')
+			fout.write('  <td>' + getBarChart([baseexperiment.cost.energy*TOTAL_YEARS, baseexperiment.cost.peak*TOTAL_YEARS, baseexperiment.cost.capex], 150*1000*1000)+'</td>\n')
 			
 			# Best non deferrable
 			bestexperiment = baseexperiment
 			for experiment in results[scenario]:
 				if experiment.isComplete() and experiment.setup.deferrable == False:
 					if experiment.cost.getTotal(TOTAL_YEARS) < bestexperiment.cost.getTotal(TOTAL_YEARS):
-						if experiment.setup.cooling==None or experiment.setup.cooling.lower()=='none':
+						if experiment.setup.cooling==None or experiment.setup.cooling.lower()=='none' or experiment.setup.cooling!=None:
 							bestexperiment = experiment
 			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
-			fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
+			fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 150*1000*1000)+'</td>\n')
+			# Solar
 			fout.write('  <td align="right">%s</td>\n' % powerStr(bestexperiment.setup.solar))
-			fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 4.8*1000, color='green')+'</td>\n')
+			fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 15*1000*1000, color='green')+'</td>\n')
+			# Battery
 			fout.write('  <td align="right">%s</td>\n' % energyStr(bestexperiment.setup.battery))
-			fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 32*1000, color='yellow')+'</td>\n')
+			fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 100*1000*1000, color='yellow')+'</td>\n')
 			# Best non-deferrable
 			bestexperiment = baseexperiment
 			for experiment in results[scenario]:
 				if experiment.isComplete() and experiment.setup.deferrable == True:
 					if experiment.cost.getTotal(TOTAL_YEARS) < bestexperiment.cost.getTotal(TOTAL_YEARS):
-						if experiment.setup.cooling==None or experiment.setup.cooling.lower()=='none':
+						if experiment.setup.cooling==None or experiment.setup.cooling.lower()=='none' or experiment.setup.cooling!=None:
 							bestexperiment = experiment
 			fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
-			fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
+			fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 150*1000*1000)+'</td>\n')
+			# Solar
 			fout.write('  <td align="right">%s</td>\n' % powerStr(bestexperiment.setup.solar))
-			fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 4.8*1000, color='green')+'</td>\n')
+			fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 15*1000*1000, color='green')+'</td>\n')
+			# Battery
 			fout.write('  <td align="right">%s</td>\n' % energyStr(bestexperiment.setup.battery))
-			fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 32*1000, color='yellow')+'</td>\n')
+			fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 100*1000*1000, color='yellow')+'</td>\n')
 			fout.write('</tr>\n')
 		fout.write('</tbody>\n')
 		fout.write('</table>\n')
@@ -865,7 +881,7 @@ if __name__ == "__main__":
 					fout.write('  <td><a href="summary-%s.html">%s</a></td>\n' % (experiment.scenario.workload, experiment.scenario.workload.title()))
 					# Base
 					fout.write('  <td><a href="%s.html">%s</a></td>\n' % (experiment.getFilename(), costStr(baseexperiment.cost.getTotal(TOTAL_YEARS))))
-					fout.write('  <td>' + getBarChart([baseexperiment.cost.energy*TOTAL_YEARS, baseexperiment.cost.peak*TOTAL_YEARS, baseexperiment.cost.capex], 24*1000)+'</td>\n')
+					fout.write('  <td>' + getBarChart([baseexperiment.cost.energy*TOTAL_YEARS, baseexperiment.cost.peak*TOTAL_YEARS, baseexperiment.cost.capex], 150*1000*1000)+'</td>\n')
 					# Best non deferrable
 					bestexperiment = baseexperiment
 					for experiment in results[scenario]:
@@ -873,11 +889,11 @@ if __name__ == "__main__":
 							if not experiment.setup.deferrable and experiment.setup.location==location:
 								bestexperiment = experiment
 					fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
-					fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
+					fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 150*1000*1000)+'</td>\n')
 					fout.write('  <td align="right">%s</td>\n' % powerStr(bestexperiment.setup.solar))
-					fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 4.8*1000, color='green')+'</td>\n')
+					fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 15*1000*1000, color='green')+'</td>\n')
 					fout.write('  <td align="right">%s</td>\n' % energyStr(bestexperiment.setup.battery))
-					fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 32*1000, color='yellow')+'</td>\n')
+					fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 100*1000*1000, color='yellow')+'</td>\n')
 					# Best deferrable
 					bestexperiment = baseexperiment
 					for experiment in results[scenario]:
@@ -885,11 +901,11 @@ if __name__ == "__main__":
 							if experiment.setup.deferrable and experiment.setup.location==location:
 								bestexperiment = experiment
 					fout.write('  <td><a href="%s.html">%s</a></td>\n' % (bestexperiment.getFilename(), costStr(bestexperiment.cost.getTotal(TOTAL_YEARS))))
-					fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 24*1000)+'</td>\n')
+					fout.write('  <td>' + getBarChart([bestexperiment.cost.energy*TOTAL_YEARS, bestexperiment.cost.peak*TOTAL_YEARS, bestexperiment.cost.capex], 150*1000*1000)+'</td>\n')
 					fout.write('  <td align="right">%s</td>\n' % powerStr(bestexperiment.setup.solar))
-					fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 4.8*1000, color='green')+'</td>\n')
+					fout.write('  <td>' + getBarChart([bestexperiment.setup.solar], 15*1000*1000, color='green')+'</td>\n')
 					fout.write('  <td align="right">%s</td>\n' % energyStr(bestexperiment.setup.battery))
-					fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 32*1000, color='yellow')+'</td>\n')
+					fout.write('  <td>' + getBarChart([bestexperiment.setup.battery], 100*1000*1000, color='yellow')+'</td>\n')
 					fout.write('</tr>\n')
 			fout.write('</tbody>\n')
 			fout.write('</table>\n')

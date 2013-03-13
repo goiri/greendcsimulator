@@ -82,6 +82,8 @@ class Simulator:
 		# Costs
 		costbrownenergy = 0.0
 		costbrownpower = 0.0
+		# Errors
+		errors = 0
 		# Peak brown
 		peakbrown = 0.0
 		peakbrownlife = 0.0
@@ -165,9 +167,9 @@ class Simulator:
 					end = mid
 				else:
 					start = mid
-			solver.options.batDischargeMax = mid/100.0
-			if solver.options.batDischargeMax > 0.70:
-				solver.options.batDischargeMax = 0.70
+			solver.options.batDischargeMax = round(mid/100.0, 2)
+			if solver.options.batDischargeMax > 0.75:
+				solver.options.batDischargeMax = 0.75
 		
 		# Simulation core
 		# Iterate the maximum time (PERIOD) in steps (TIMESTEP)
@@ -183,8 +185,8 @@ class Simulator:
 			solar = self.location.getSolar(time)
 			solarpower = solar * self.infra.solar.capacity * self.infra.solar.efficiency
 			wind = self.location.getWind(time)
-			windpower = wind * self.infra.wind.capacity * self.infra.wind.efficiency
-			greenpower = solarpower + windpower
+			windpower = wind * self.infra.wind.capacity    * self.infra.wind.efficiency
+			greenpower = round(solarpower + windpower, 1)
 			
 			# Apply policy
 			if not self.greenswitch:
@@ -213,60 +215,61 @@ class Simulator:
 				solver.options.minSizeIni = coveringPower
 				
 				# Fill data with actual values and predictions
-				greenAvail = []
+				greenAvail = [] if self.infra.solar.capacity > 0.0 else None
 				brownPrice = []
 				puePredi = []
 				worklPredi = []
-				for predhour in range(0, SCHEDULING_WINDOW):
+				for predhour in range(0, solver.options.maxTime):
 					# Current values
 					if predhour == 0:
 						# Green available
-						greenAvail.append(TimeValue(0, greenpower))
+						if self.infra.solar.capacity > 0.0:
+							greenAvail.append(TimeValue(0, greenpower))
 						# Brown price
-						b = self.location.getBrownPrice(time)
+						b = round(self.location.getBrownPrice(time), 5)
 						brownPrice.append(TimeValue(0, b))
 						# PUE
 						temperature = self.location.getTemperature(time)
-						pue = self.infra.cooling.getPUE(temperature)
+						pue = round(self.infra.cooling.getPUE(temperature), 4)
 						puePredi.append(TimeValue(0, pue))
 						# Workload
 						reqNodes = self.workload.getLoad(time)*numServers
-						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
-						#coolingPower = self.infra.cooling.getPower(temperature)						
-						w = loadPower #+ coolingPower
+						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)					
+						w = round(loadPower, 4)
 						worklPredi.append(TimeValue(0, w))
 					# Predicted values
 					else:
 						predseconds = predhour*60*60
 						# Green availability prediction: right now is perfect knowledge
-						g = self.location.getSolar(time + predseconds) * self.infra.solar.capacity * self.infra.solar.efficiency
-						greenAvail.append(TimeValue(predseconds, g))
+						if self.infra.solar.capacity > 0.0:
+							g = round(self.location.getSolar(time + predseconds) * self.infra.solar.capacity * self.infra.solar.efficiency, 4)
+							greenAvail.append(TimeValue(predseconds, g))
 						# Brown price prediction
-						b = self.location.getBrownPrice(time + predseconds)
+						b = round(self.location.getBrownPrice(time + predseconds), 5)
 						brownPrice.append(TimeValue(predseconds, b))
 						# PUE
 						temperature = self.location.getTemperature(time + predseconds)
-						pue = self.infra.cooling.getPUE(temperature)
+						pue = round(self.infra.cooling.getPUE(temperature))
 						puePredi.append(TimeValue(predseconds, pue))
 						# Actual workload
 						#reqNodes = self.workload.getLoad(time + predseconds)
 						# Workload average based on prediction
-						reqNodes = 0.0
-						for i in range(0, int(60.0*60.0/TIMESTEP)):
-							reqNodes += self.workload.getLoad(time + predseconds + i*TIMESTEP, )*numServers
-						reqNodes = float(reqNodes)/(60.0*60.0/TIMESTEP)
+						reqNodes = []
+						for i in range(0, int(1.0*solver.options.slotLength/TIMESTEP)):
+							reqNodes.append(self.workload.getLoad(time + predseconds + i*TIMESTEP)*numServers)
+						reqNodes = 1.0*sum(reqNodes)/len(reqNodes)
 						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
-						#coolingPower = self.infra.cooling.getPower(temperature)
-						w = loadPower #+ coolingPower
-						# TODO Workload prediction #w = 1000.0
+						#w = round(loadPower, 1)
+						w = math.ceil(1.05*loadPower) # Add extra 5% to predictionto prevent going to extreme
+						# TODO Workload prediction: w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
-				if timeStr(time) == '76d15h':
-					solver.saveModel = True
-				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter)
-				solver.saveModel = False
-			
+				#if timeStr(time) == '272d15h45m':# or timeStr(time) == '110d22h30m':
+					#solver.saveModel = True
+				scale = 1.0 if solver.options.maxSize < 1000*1000 else 1000.0
+				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter, scale=scale)
+				#solver.saveModel = False
 			
 			# Initialize
 			brownpower = 0.0
@@ -277,6 +280,8 @@ class Simulator:
 			if sol == None:
 				if self.greenswitch:
 					print "No solution at", timeStr(time)
+					fout.write("# Solver error at %s\n" % timeStr(time))
+					errors += 1
 				# Calculate workload: Get the number of nodes required
 				reqNodes = self.workload.getLoad(time)*numServers
 				workload = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
@@ -313,11 +318,8 @@ class Simulator:
 				# Cooling
 				temperature = self.location.getTemperature(time)
 				pue = self.infra.cooling.getPUE(temperature)
-				#coolingPower = self.infra.cooling.getPower(temperature)
 				# Get solution from solver
 				execload = sol['Load[0]']
-				#execload = round(sol['Load[0]'], 4)
-				#execload = round((sol['LoadBatt[0]'] + sol['LoadGreen[0]'] + sol['LoadBrown[0]'])/pue, 4)
 				
 				# Calculate brown power and net metering
 				brownpower = sol['BattBrown[0]'] + sol['LoadBrown[0]']
@@ -412,8 +414,6 @@ class Simulator:
 					print ' PUE       ', puePredi[0]
 					print ' Brown     ', brownPrice[0]
 					print ' Load      ', sol['Load[0]']
-					print ' Workload  ', sol['Workload[0]']
-					print ' BPrice    ', sol['BrownPrice[0]']
 					
 					print ' LoadBrown ', sol['LoadBrown[0]']
 					print ' LoadBatt  ', sol['LoadBatt[0]']
@@ -428,19 +428,23 @@ class Simulator:
 					print ' NetGreen  ',  sol['NetGreen[0]']
 					
 					print ' PeakBrown ',  sol['PeakBrown']
-			
-			if timeStr(time) == '76d15h':# or timeStr(time) == timeStr(6620400-900):
-				print 'Solution at', timeStr(time), 'was:'
-				print ' Load      ', sol['Load[0]']
-				print ' LoadBrown ', sol['LoadBrown[0]']
-				print ' LoadBatt  ', sol['LoadBatt[0]']
-				print ' LoadGreen ', sol['LoadGreen[0]']
-				print ' BattBrown ',  sol['BattBrown[0]']
-				print ' BattGreen ',  sol['BattGreen[0]']
-				print ' CapBattery',  sol['CapBattery[0]']
+			'''
+			if timeStr(time) == '35d3h': #timeStr(time) == '204d20h15m':# or time == 1080900:
+				try:
+					print 'Solution at', timeStr(time), 'was:'
+					print ' Load      ', sol['Load[0]']
+					print ' LoadBrown ', sol['LoadBrown[0]']
+					print ' LoadBatt  ', sol['LoadBatt[0]']
+					print ' LoadGreen ', sol['LoadGreen[0]']
+					print ' BattBrown ', sol['BattBrown[0]']
+					print ' BattGreen ', sol['BattGreen[0]']
+					print ' CapBattery', sol['CapBattery[0]']
+				except:
+					pass
 				
 				print 'Input at', timeStr(time), 'was:'
-				print ' Green    ', greenAvail[0]
+				if greenAvail!=None:
+					print ' Green    ', greenAvail[0]
 				print ' Workload ', worklPredi[0]
 				print ' PUE      ', puePredi[0]
 				print ' Brown    ', brownPrice[0]
@@ -448,9 +452,10 @@ class Simulator:
 				print 'Brown'
 				for tv in brownPrice:
 					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
-				print 'Green'
-				for tv in greenAvail:
-					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
+				if greenAvail!=None:
+					print 'Green'
+					for tv in greenAvail:
+						print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
 				print 'PUE'
 				for tv in puePredi:
 					print 'TimeValue(%d, %f), ' % (tv.t, tv.v)
@@ -481,21 +486,23 @@ class Simulator:
 				print '  previousPeak    ', solver.options.previousPeak
 				print '  previousPeakLife', solver.options.previousPeakLife
 				print '  peakCost        ', solver.options.peakCost
-				print '  peakCostLife    ', solver.options.peakCostLife	
+				print '  peakCostLife    ', solver.options.peakCostLife
 				
 				print 'Result:'
 				print '  LoadBrown',  sol['LoadBrown[0]']
 				print '  BattBrown',  sol['BattBrown[0]']
 			'''
-			'''
-			
 			
 			# Charge/discharge battery
+			#aux = (100.0*battery/self.infra.battery.capacity)
+			#aux = battery
 			battery += ((self.infra.battery.efficiency * batcharge) - batdischarge) * (TIMESTEP/3600.0)
+			#print '%.2f = %.2f + %.2fx%.2f - %.2f    %.2f' % (battery/1000000.0, aux/1000000.0, self.infra.battery.efficiency, batcharge/1000000.0, batdischarge/1000000.0, (TIMESTEP/3600.0))
+			#print '%10s %.2f%% => %.2f%% [%.1f%%] %4.2fMW +%.1fMW -%.1fMW' % (timeStr(time), aux, 100.0*battery/self.infra.battery.capacity, 100.0*(1-solver.options.batDischargeMax), peakbrown/1000000.0, batcharge/1000000.0, batdischarge/1000000.0)
 			if battery > self.infra.battery.capacity:
 				battery = self.infra.battery.capacity
 			if battery < solver.options.batCap*solver.options.batDischargeProtection:
-				print 'Error: The battery was discharged further than the protection limit.'
+				print timeStr(time), 'Error: battery was discharged further than the protection limit: %.1fMWh < %.1fMWh < %.1fMWh' % (battery/(1000.0*1000.0), solver.options.batCap*solver.options.batDischargeProtection/(1000.0*1000.0), solver.options.batCap/(1000.0*1000.0))
 				battery = solver.options.batCap*solver.options.batDischargeProtection
 			
 			# Account battery lifetime
@@ -531,14 +538,14 @@ class Simulator:
 				# Change DoD based on battery lifetime projections (every 5 days)
 				if self.batteryManagement and time>0 and time%parseTime('5d') == 0:
 					# Calculate battery lifetime by this time
-					projbatlifetime = 100.0*time/(self.infra.battery.lifetimemax*365*24*60*60)
+					projbatlifetime = 100.0*time/float(self.infra.battery.lifetimemax*365*24*60*60)
 					if batlifetime < projbatlifetime:
-						solver.options.batDischargeMax += 5/100.0 # Increase 5%
+						solver.options.batDischargeMax += 0.05 # Increase 5%
 					elif batlifetime > projbatlifetime:
-						solver.options.batDischargeMax -= 5/100.0 # Decrease 5%
-					# Adjust margins 0 < x < 80%
-					if solver.options.batDischargeMax > 0.80:
-						solver.options.batDischargeMax = 0.80
+						solver.options.batDischargeMax -= 0.05 # Decrease 5%
+					# Adjust margins 0 < x < 80% => 20% always
+					if solver.options.batDischargeMax > 0.75:
+						solver.options.batDischargeMax = 0.75
 					if solver.options.batDischargeMax < 0.00:
 						solver.options.batDischargeMax = 0.00
 			
@@ -567,6 +574,7 @@ class Simulator:
 			# Peak power accounting every month
 			if (startdate + timedelta(seconds=time)).month != currentmonth:
 				costbrownpower += self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0
+				#print 'Month %d: %.2fMW (%.2fMW)' % (currentmonth, peakbrown/1000000.0, peakbrownlife/1000000.0)
 				fout.write('# Peak brown power month %d: $%.2f (%.2fW)\n' % (currentmonth, self.location.brownpowerprice[time-parseTime('1d')] * peakbrown/1000.0, peakbrown))
 				# Flush file
 				fout.flush()
@@ -613,6 +621,7 @@ class Simulator:
 			fout.write('# Battery total discharge: %.2f%%\n' % (battotaldischarge))
 			fout.write('# Battery lifetime: %.2f%%\n' % (batlifetime))
 			fout.write('# Total: $%.2f\n' % (costbrownenergy+costbrownpower+costinfrastructure))
+			fout.write('# Solver errors %d\n' % errors)
 			fout.close()
 
 if __name__ == "__main__":

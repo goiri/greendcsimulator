@@ -44,13 +44,6 @@ class SolverOptions:
 
 		# Optimization
 		self.optCost = 0.0
-		self.optBat = 0.0
-		self.optBatCap = 0.0
-		self.optBatCapEnd = 0.0
-		self.optPrior = 0.0
-		self.optSlowdown = 0.0
-		self.optLoad = 0.0
-		self.optPerf = 0.0
 
 class Battery:
 	def __init__(self, cap, factor=1.0):

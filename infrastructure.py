@@ -333,18 +333,18 @@ class Cooling:
 		if len(temperatures) == 0:
 			return 1.0
 		elif temperature < temperatures[0]:
-			return self.pue[temperatures[0]]
+			return round(self.pue[temperatures[0]], 3)
 		elif temperature > temperatures[-1]:
-			return self.pue[temperatures[-1]]
+			return round(self.pue[temperatures[-1]], 3)
 		elif temperature in temperatures:
-			return self.pue[temperature]
+			return round(self.pue[temperature], 3)
 		else:
 			# Walk the list to find the right PUE
 			for i in range(0, len(temperatures)):
 				if temperature < temperatures[i]:
 					p1 = (temperatures[i-1],self.pue[temperatures[i-1]])
 					p2 = (temperatures[i],  self.pue[temperatures[i]])
-					return interpolate(p1, p2, temperature)
+					return round(interpolate(p1, p2, temperature), 3)
 		return 1.0
 
 """

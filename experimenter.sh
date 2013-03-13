@@ -48,7 +48,7 @@ while [ $# -gt 0 ]; do
 			SOLARS=$1
 			shift
 			while [[ $1 != --* && $# -gt 0 ]]; do
-				SOLARS=" "$1
+				SOLARS=$SOLARS" "$1
 				shift
 			done
 			;;
@@ -57,7 +57,7 @@ while [ $# -gt 0 ]; do
 			BATTERIES=$1
 			shift
 			while [[ $1 != --* && $# -gt 0 ]]; do
-				BATTERIES=" "$1
+				BATTERIES=$BATTERIES" "$1
 				shift
 			done
 			;;
@@ -66,7 +66,7 @@ while [ $# -gt 0 ]; do
 			LOCATIONS=$1
 			shift
 			while [[ $1 != --* && $# -gt 0 ]]; do
-				LOCATIONS=" "$1
+				LOCATIONS=$LOCATIONS" "$1
 				shift
 			done
 			;;
@@ -75,7 +75,7 @@ while [ $# -gt 0 ]; do
 			WORKLOADS=$1
 			shift
 			while [[ $1 != --* && $# -gt 0 ]]; do
-				WORKLOADS=" "$1
+				WORKLOADS=$WORKLOADS" "$1
 				shift
 			done
 			;;
@@ -85,7 +85,6 @@ while [ $# -gt 0 ]; do
 			;;
 	esac
 done
-
 
 if true; then
 	for ALWAYSON in ""; do # for ALWAYSON in "" "--alwayson"; do

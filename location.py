@@ -236,6 +236,7 @@ class Location:
 	
 	def getBrownPrice(self, time):
 		offsettime = time
+		#return 0.005
 		return self.brownenergyprice[offsettime]
 		
 
