@@ -249,7 +249,7 @@ class Simulator:
 						brownPrice.append(TimeValue(predseconds, b))
 						# PUE
 						temperature = self.location.getTemperature(time + predseconds)
-						pue = round(self.infra.cooling.getPUE(temperature))
+						pue = round(self.infra.cooling.getPUE(temperature), 4)
 						puePredi.append(TimeValue(predseconds, pue))
 						# Actual workload
 						#reqNodes = self.workload.getLoad(time + predseconds)
@@ -265,7 +265,7 @@ class Simulator:
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
-				#if timeStr(time) == '272d15h45m':# or timeStr(time) == '110d22h30m':
+				#if timeStr(time) == '79d11h':# or timeStr(time) == '110d22h30m':
 					#solver.saveModel = True
 				scale = 1.0 if solver.options.maxSize < 1000*1000 else 1000.0
 				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter, scale=scale)

@@ -26,7 +26,9 @@ try:
 except ImportError, e:
 	print 'export LD_LIBRARY_PATH='+GUROBI_PATH+'/lib'
 
+
 TOTAL_YEARS = 12
+EXTRA_MARGIN = 1.05
 
 """
 Model of Parasol using MILP.
@@ -169,14 +171,14 @@ class ParasolModel:
 			if self.options.loadDelay:
 				# Load between boundaries; This is the original load and does not have PUE
 				minSize = (self.options.minSizeIni if t==0 else self.options.minSize)/scale
-				Load[t] = m.addVar(lb=minSize, ub=math.ceil(1.05*self.options.maxSize/scale), name="Load["+str(t)+"]")
+				Load[t] = m.addVar(lb=minSize, ub=math.ceil(EXTRA_MARGIN*self.options.maxSize/scale), name="Load["+str(t)+"]")
 			else:
 				# Fixed size (minimum size)
 				minSize = (self.options.minSizeIni if t==0 else self.options.minSize)/scale
 				Load[t] = max(Workload[t], minSize)
-			LoadBrown[t] = m.addVar(ub=math.ceil(1.05*PUE[t]*self.options.maxSize/scale), name="LoadBrown["+str(t)+"]") if self.isBrown()   else 0.0
-			LoadBatt[t] =  m.addVar(ub=math.ceil(1.05*PUE[t]*self.options.maxSize/scale), name="LoadBatt["+str(t)+"]")  if self.isBattery() else 0.0
-			LoadGreen[t] = m.addVar(ub=math.ceil(1.05*PUE[t]*self.options.maxSize/scale), name="LoadGreen["+str(t)+"]") if self.isGreen()   else 0.0
+			LoadBrown[t] = m.addVar(ub=math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale), name="LoadBrown["+str(t)+"]") if self.isBrown()   else 0.0
+			LoadBatt[t] =  m.addVar(ub=math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale), name="LoadBatt["+str(t)+"]")  if self.isBattery() else 0.0
+			LoadGreen[t] = m.addVar(ub=math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale), name="LoadGreen["+str(t)+"]") if self.isGreen()   else 0.0
 		
 		# Battery
 		BattGreen = {}
@@ -205,9 +207,9 @@ class ParasolModel:
 		# Peak costs
 		if self.isBrown():
 			if self.options.peakCost != None:
-				PeakBrown =     m.addVar(lb=0.0, ub=math.ceil(max((MaxPUE*1.05*self.options.maxSize + self.options.batChargeRate)/scale, 1.05*self.options.previousPeak/scale)),     name="PeakBrown")
+				PeakBrown =     m.addVar(lb=0.0, ub=math.ceil(max((MaxPUE*EXTRA_MARGIN*self.options.maxSize + self.options.batChargeRate)/scale, EXTRA_MARGIN*self.options.previousPeak/scale)),     name="PeakBrown")
 			if self.options.peakCostLife != None:
-				PeakBrownLife = m.addVar(lb=0.0, ub=math.ceil(max((MaxPUE*1.05*self.options.maxSize + self.options.batChargeRate)/scale, 1.05*self.options.previousPeakLife/scale)), name="PeakBrownLife")
+				PeakBrownLife = m.addVar(lb=0.0, ub=math.ceil(max((MaxPUE*EXTRA_MARGIN*self.options.maxSize + self.options.batChargeRate)/scale, EXTRA_MARGIN*self.options.previousPeakLife/scale)), name="PeakBrownLife")
 		
 		# Net metering
 		NetGreen = {}
