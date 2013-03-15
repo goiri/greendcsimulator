@@ -1,5 +1,7 @@
 #!/usr/bin/python2.7
 
+import os
+
 """
 Get the depth of discharge information from the logfile
 """

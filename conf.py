@@ -1,8 +1,7 @@
 #!/usr/bin/env python2.7
 
 DATA_PATH = 'data/'
-
-LOG_PATH = 'results/'
+LOG_PATH =  'results/'
 
 TOTAL_YEARS = 12
 

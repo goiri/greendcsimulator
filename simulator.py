@@ -13,8 +13,6 @@ from datetime import datetime, timedelta
 
 # GreenSwitch
 import sys
-#sys.path.append('/home/goiri/hadoop-parasol')
-#sys.path.append('/home/goirix/hadoop-parasol')
 sys.path.append('parasolsolver')
 from parasolsolver import ParasolModel
 from parasolsolvercommons import TimeValue
@@ -22,9 +20,9 @@ from parasolsolvercommons import TimeValue
 """
 Simulator
 TODO list:
-Debug possible errors
+-
 TEST list:
-Debug possible errors
+-
 """
 class Simulator:
 	def __init__(self, infrafile, locationfile, workloadfile, period=SIMULATIONTIME, turnoff=True):
@@ -624,6 +622,9 @@ class Simulator:
 			fout.write('# Solver errors %d\n' % errors)
 			fout.close()
 
+"""
+It reads the options and runs the simulation.
+"""
 if __name__ == "__main__":
 	parser = OptionParser(usage="usage: %prog [options] filename", version="%prog 1.0")
 	# Data files
@@ -652,6 +653,7 @@ if __name__ == "__main__":
 	
 	# Initialize simulator
 	simulator = Simulator(options.infra, options.location, options.workload, parseTime(options.period), turnoff=not options.alwayson)
+	# Change options
 	if options.nobattery == True:
 		simulator.infra.battery.capacity = 0.0
 	if options.nosolar == True:

@@ -1,6 +1,49 @@
 #!/usr/bin/python2.7
 
+import sys
+sys.path.append('..')
 from commons import *
+
+def getHeader(title="Green Datacenter Simulator results"):
+	# Header
+	ret = '<html>\n'
+	ret += '<head>\n'
+	ret += '  <title>%s</title>\n' % title
+	ret += '  <link rel="stylesheet" type="text/css" href="style.css"/>\n'
+	ret += '</head>\n'
+	ret += '<body>\n'
+	return ret
+
+
+def getFooter():
+	# Footer
+	ret = '</body>\n'
+	ret += '</html>\n'
+	return ret
+
+"""
+Draws an HTML bar chart
+"""
+def getBarChart(vals, maxval, width=100, height=15, color='blue'):
+	out = ''
+	out += '<table border="0" cellspacing="0" cellpadding="0">'
+	out += '<tr height="%d">' % height
+	if isinstance(color, str):
+		colors = [color, 'yellow', 'red', 'green', 'orange', 'black', 'blue']
+	else:
+		colors = color + ['yellow', 'red', 'green', 'orange', 'black', 'blue']
+	i=0
+	total = 0
+	for val in vals:
+		if not math.isinf(val):
+			out += '<td width="%dpx" bgcolor="%s" title="%.1f"/>' % (width*1.0*val/maxval, colors[i%len(colors)], val)
+		total += val
+		i+=1
+	if not math.isinf(total):
+		out += '<td width="%dpx"/>' % (width*1.0*(maxval-total)/maxval)
+	out += '</tr>'
+	out += '</table>'
+	return out
 
 """
 Defines the scenario to evaluate the datacenter
@@ -74,7 +117,9 @@ class Setup:
 		out += ' Bat:%s' % energyStr(self.battery)
 		return out
 
-# Defines the costs related with operating a datacenter.
+"""
+Defines the costs related with operating a datacenter.
+"""
 class Cost:
 	def __init__(self, energy=0.0, peak=0.0, capex=0.0, building=0.0):
 		self.capex = capex # Batteries + Solar + Wind + Building
@@ -104,12 +149,16 @@ class Cost:
 		out += ' + %s' % costStr(self.energy)
 		return out
 
-# Result for an experiment
+"""
+Result for an experiment
+"""
 class Result:
 	def __init__(self, peakpower = 0.0):
 		self.peakpower = peakpower
 
-# Defines an experiment
+"""
+Defines an experiment
+"""
 class Experiment:
 	# Initialize
 	def __init__(self, scenario=None, setup=None, cost=None, result=None, batterylifetime=None, progress=0.0):
@@ -177,7 +226,7 @@ class Experiment:
 	def isComplete(self):
 		return self.progress == 100.0
 	
-	#Get the filename related to the current setup
+	# Get the filename related to the current setup
 	def getFilename(self):
 		filename = 'result'
 		# IT size
@@ -208,6 +257,10 @@ class Experiment:
 		if self.setup.greenswitch == False:
 			filename += '-nogreenswitch'
 		return filename
+	
+	# String for the experiment
+	def __str__(self):
+		return str(self.scenario)+'-'+str(self.setup)+'-'+str(self.cost)
 	
 	# Compare the experiment with another one
 	def __cmp__(self, other):

@@ -7,9 +7,14 @@ import datetime
 
 from subprocess import Popen, call
 
+from reportercommons import *
+
+# Add general conf
+sys.path.append('..')
 from conf import *
-from commons import *
-from parsercommons import *
+#from commons import *
+#
+#from parserconf import *
 
 """
 Generate figures for a log file

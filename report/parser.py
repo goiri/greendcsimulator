@@ -1,8 +1,19 @@
 #!/usr/bin/python2.7
 
-from commons import *
-from conf import *
+import os
 
+from reportercommons import *
+
+import sys
+sys.path.append('..')
+from conf import *
+from commons import *
+
+
+"""
+Get the results from LOG_PATH.
+It returns results[scenario] = [experiment1, experiment2,...]
+"""
 def getResults():
 	results = {}
 	for filename in sorted(os.listdir(LOG_PATH)):
@@ -45,7 +56,6 @@ def getResults():
 							elif line.startswith('# Infrastructure:'):
 								costcapex = parseCost(line.split(' ')[2])
 							elif line.startswith('# Total:'):
-								#print 'Total:', line.split(' ')[2]
 								lastTime = experiment.scenario.period
 							elif line.startswith('# Battery number discharges:'):
 								batnumdischarges = int(line.split(' ')[4])
@@ -76,7 +86,7 @@ def getResults():
 			experiment.progress = 100.0*lastTime/experiment.scenario.period
 			
 			experiment.result = Result(peakpower=peakpower)
-			experiment.cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex, building=costbuilding)
+			experiment.cost =   Cost(energy=costenergy, peak=costpeak, capex=costcapex, building=costbuilding)
 			experiment.batterylifetime = batlifetime
 			
 			# Create data structures
@@ -90,3 +100,12 @@ def getResults():
 				results[experiment.scenario] = []
 			results[experiment.scenario].append(experiment)
 	return results
+
+
+if __name__ == "__main__":
+	print "Getting results"
+	results = getResults()
+	for scenario in results:
+		print scenario
+		for experiment in results[scenario]:
+			print '\t', experiment
