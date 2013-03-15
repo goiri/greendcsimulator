@@ -2,407 +2,16 @@
 
 import sys
 import os
-import os.path
-import time
-import datetime
 
-from subprocess import Popen, call
 from operator import itemgetter
 
 from commons import *
+from logcommons import *
+from parsercommons import *
 from conf import *
 from plotter import *
 
 from infrastructure import Batteries
-
-"""
-Defines the scenario to evaluate the datacenter
-"""
-class Scenario:
-	def __init__(self, netmeter=0, period=None, workload=None):
-		self.netmeter = netmeter
-		self.period = period
-		self.workload = workload
-	
-	def __str__(self):
-		out = ''
-		#out += '%.1f%%' % (self.netmeter*100.0)
-		out += '%.1f' % (self.netmeter*100.0)
-		out += '-%s' % timeStr(self.period)
-		out += '-%s' % self.workload.title()
-		return out
-	
-	def __cmp__(self, other):
-		if other == None:
-			return 1
-		else:
-			if self.workload == other.workload:
-				if self.netmeter == other.netmeter:
-					return self.period - other.period
-				else:
-					return self.netmeter - other.netmeter
-			else:
-				return cmp(self.workload, other.workload)
-	
-	def __hash__(self):
-		return hash(str(self))
-
-"""
-Defines the setup of the datacenter.
-"""
-class Setup:
-	def __init__(self, itsize=0.0, solar=0.0, battery=0.0, location=None, deferrable=False, turnoff=False, greenswitch=True, cooling=None):
-		self.location = location
-		self.itsize = itsize
-		self.solar = solar
-		self.battery = battery
-		self.deferrable = deferrable
-		self.turnoff = turnoff
-		self.greenswitch = greenswitch
-		self.cooling = cooling
-	
-	def __cmp__(self, other):
-		if other == None:
-			return 1
-		elif self.itsize != other.itsize:
-			return self.itsize - other.itsize
-		elif self.cooling != other.cooling:
-			return cmp(self.cooling, other.cooling)
-		elif self.location != other.location:
-			return cmp(self.location, other.location)
-		elif self.turnoff != other.turnoff:
-			return self.turnoff - other.turnoff
-		elif self.deferrable != other.deferrable:
-			return self.deferrable - other.deferrable
-		elif self.battery != other.battery:
-			return self.battery - other.battery
-		else:
-			return self.solar - other.solar
-	
-	def __str__(self):
-		out = ''
-		out += '%s' % self.location.replace('_', ' ').title()[0:20]
-		out += ' IT:%s' % powerStr(self.itsize)
-		out += ' Sun:%s' % powerStr(self.solar)
-		out += ' Bat:%s' % energyStr(self.battery)
-		return out
-
-# Defines the costs related with operating a datacenter.
-class Cost:
-	def __init__(self, energy=0.0, peak=0.0, capex=0.0, building=0.0):
-		self.capex = capex # Batteries + Solar + Wind + Building
-		self.building = building # Datacenter building
-		self.energy = energy # Energy
-		self.peak = peak # Peak power
-	
-	def getTotal(self, years=1):
-		return self.getCAPEX() + self.getOPEX(years)
-	
-	def getOPEX(self, years=1):
-		return years*(self.energy + self.peak)
-	
-	def getCAPEX(self):
-		return self.capex
-	
-	def __cmp__(self, other):
-		if other == None:
-			return 1
-		else:
-			return self.getTotal()-other.getTotal()
-	
-	def __str__(self):
-		out = ''
-		out += '%s' % costStr(self.capex)
-		out += ' + %s' % costStr(self.peak)
-		out += ' + %s' % costStr(self.energy)
-		return out
-
-# Result for an experiment
-class Result:
-	def __init__(self, peakpower = 0.0):
-		self.peakpower = peakpower
-
-# Defines an experiment
-class Experiment:
-	# Initialize
-	def __init__(self, scenario=None, setup=None, cost=None, result=None, batterylifetime=None, progress=0.0):
-		self.scenario = scenario
-		self.setup = setup
-		self.cost = cost
-		self.result = result
-		self.batterylifetime = batterylifetime
-		self.progress = progress
-		self.errors = 0
-	
-	# Read experiment from filename
-	@classmethod
-	def fromfilename(self, filename):
-		# Empty experiment
-		ret = Experiment()
-		# Clean prefix
-		if filename.find('/') >= 0:
-			filename = filename[filename.rfind('/')+1:]
-		# Clean suffix
-		if filename.endswith('.log') or filename.endswith('.png'):
-			filename = filename[:-4]
-		if filename.endswith('.html'):
-			filename = filename[:-5]
-		# Split
-		split = filename.split('-')
-		if split[0] == 'result':
-			split.pop(0)
-		itsize = float(split.pop(0))
-		battery = int(split.pop(0))
-		solar = int(split.pop(0))
-		period = parseTime(split.pop(0))
-		# Net metering
-		netmeter = 0.0
-		if split[0].startswith('net'):
-			netmeter = float(split.pop(0)[len('net'):])
-		# Workload
-		workload = split.pop(0)
-		# Location
-		location = split.pop(0)
-		# Read the rest of the values
-		delay = False
-		alwayson = False
-		greenswitch = True
-		cooling = None
-		while len(split) > 0:
-			value = split.pop(0)
-			if value == 'on':
-				alwayson = True
-			elif value == 'delay':
-				delay = True
-			elif value == 'nogreenswitch':
-				greenswitch = False
-			elif value.startswith('cool'):
-				cooling = value[len('cool'):]
-			else:
-				print 'Unknown value:', value
-		# Update information
-		ret.scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
-		ret.setup =    Setup(itsize=itsize, solar=solar, battery=battery, location=location, cooling=cooling, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch)
-		
-		return ret
-
-	# Check if the experiment has finished
-	def isComplete(self):
-		return self.progress == 100.0
-	
-	#Get the filename related to the current setup
-	def getFilename(self):
-		filename = 'result'
-		# IT size
-		filename += '-%.1f' % self.setup.itsize
-		# Solar
-		filename += '-%d' % self.setup.battery
-		# Battery
-		filename += '-%d' % self.setup.solar
-		# Period
-		filename += '-%s' % timeStr(self.scenario.period)
-		# Net metering
-		if scenario.netmeter > 0.0:
-			filename += '-net%.2f' % self.scenario.netmeter
-		# Workload
-		filename += '-%s' % self.scenario.workload
-		# Location
-		filename += '-%s' % self.setup.location
-		# Cooling
-		if self.setup.cooling != None and self.setup.cooling.lower() != 'none':
-			filename += '-cool'+self.setup.cooling
-		# Delay
-		if self.setup.deferrable == True:
-			filename += '-delay'
-		# Always on
-		if self.setup.turnoff == False:
-			filename += '-on'
-		# GreenSwitch
-		if self.setup.greenswitch == False:
-			filename += '-nogreenswitch'
-		return filename
-	
-	# Compare the experiment with another one
-	def __cmp__(self, other):
-		if other==None:
-			return 1
-		elif self.scenario != other.scenario:
-			return self.scenario.__cmp__(other.scenario)
-		elif self.setup != other.setup:
-			return self.setup.__cmp__(other.setup)
-		else:
-			return self.cost.__cmp__(other.cost)
-
-"""
-Get the depth of discharge information from the logfile
-"""
-def getBatteryStats(filename):
-	numdischarges = None
-	totaldischarge = None
-	maxdischarge = None
-	lifetime = None
-	try:
-		with open(filename, 'r') as f:
-			# Go to the end of the file
-			f.seek(-2*1024, os.SEEK_END)
-			f.readline()
-			# Start checking from the end
-			for line in f.readlines():
-				if line.startswith('#'):
-					line = line.replace('\n', '')
-					if line.startswith('# Battery number discharges:'):
-						numdischarges = int(line.split(' ')[4])
-					elif line.startswith('# Battery max discharge'):
-						maxdischarge = float(line.split(' ')[4][:-1])
-					elif line.startswith('# Battery total discharge:'):
-						totaldischarge = float(line.split(' ')[4][:-1])
-					elif line.startswith('# Battery lifetime:'):
-						lifetime = float(line.split(' ')[3][:-1])
-	except Exception, e:
-		print 'Error getting battery stats', filename
-	return numdischarges, totaldischarge, maxdischarge, lifetime
-
-"""
-Read the log file and get the statistics about energy consumption
-"""
-def getEnergyStats(logfile):
-	try:
-		brownenergy = 0.0
-		greenenergy = 0.0
-		netmeenergy = 0.0
-		peakpower = 0.0
-		batchgenergy = 0.0
-		batdisenergy = 0.0
-		costenergy = 0.0
-		costnetmeter = 0.0
-		loadenergy = 0.0
-		costpeak = 0.0
-		with open(logfile, 'r') as fin:
-			for line in fin.readlines():
-				if not line.startswith('#'):
-					line = line.replace('\n', '')
-					lineSplit = line.split('\t')
-					# Get battery power
-					t =             int(lineSplit[0])
-					brownprice =    float(lineSplit[1])
-					greenpower =    float(lineSplit[2])
-					netmeter =      float(lineSplit[3])
-					brownpower =    float(lineSplit[4])
-					batcharge =     float(lineSplit[5])
-					batdischarge =  float(lineSplit[6])
-					batlevel =      float(lineSplit[7])
-					workload =      float(lineSplit[8])
-					coolingpower =  float(lineSplit[9])
-					execload =      float(lineSplit[10])
-					prevload =      float(lineSplit[11])
-					
-					# Account TODO per month
-					if brownpower > peakpower:
-						peakpower = brownpower
-					
-					brownenergy += brownpower * (TIMESTEP/3600.0)
-					greenenergy += greenpower * (TIMESTEP/3600.0)
-					netmeenergy += netmeter * (TIMESTEP/3600.0)
-					batchgenergy += batcharge * (TIMESTEP/3600.0)
-					batdisenergy += batdischarge * (TIMESTEP/3600.0)
-					costenergy += (brownpower * (TIMESTEP/3600.0))/1000.0 * brownprice
-					costnetmeter += 0.4*(netmeter * (TIMESTEP/3600.0))/1000.0 * brownprice
-					loadenergy += execload * (TIMESTEP/3600.0)
-		costpeak = peakpower/1000.0 * 13.61
-		
-		print logfile
-		print 'Energy and power:'
-		print '\tBrown energy: %.1fWh' % brownenergy
-		print '\tGreen energy: %.1fWh' % greenenergy
-		print '\tNet metering energy: %.1fWh' % netmeenergy
-		print '\tBattery charge energy: %.1fWh' % batchgenergy
-		print '\tBattery discharge energy: %.1fWh' % batdisenergy
-		print '\tLoad energy: %.1fWh' % (loadenergy)
-		print '\tTotal used: %.1fWh' % (batdisenergy+greenenergy+brownenergy)
-		print '\tPeak power: %.1fW' % peakpower
-		print 'Cost:'
-		print '\tEnergy cost: $%.2f - $%.2f = $%.2f' % (costenergy, costnetmeter, costenergy-costnetmeter)
-		print '\tPower cost: $%.2f' % costpeak
-	except Exception, e:
-		print e
-
-"""
-Generate figures for a log file
-"""
-def genFigures(filenamebase):
-	# Multi process
-	MAX_PROCESSES = 8
-	processes = []
-	now = time.time()
-	newData = False
-	# Generate data for plotting
-	inputfile =  LOG_PATH+filenamebase+'.log'
-	if os.path.isfile(inputfile):
-		# Generate input data (make he figure boxed)
-		datafile = '/tmp/'+LOG_PATH+filenamebase+'.data'
-		# Create folder if it does not exist
-		if not os.path.isdir(datafile[:datafile.rfind('/')]):
-			os.makedirs(datafile[:datafile.rfind('/')])
-		# Generate data file if needed (does not exist or newer input file)
-		if not os.path.isfile(datafile) or os.path.getmtime(inputfile) > os.path.getmtime(datafile):
-			genPlotData(inputfile, datafile)
-			# Update modify time for datafile
-			os.utime(datafile, (os.path.getatime(datafile), os.path.getmtime(inputfile)))
-			newData = True
-		# Generate a figure for each monthFb
-		for i in range(1, 12+1):
-			daystart = int(datetime.date(2012, i, 1).strftime('%j'))-1
-			if i < 12:
-				dayend = int(datetime.date(2012, i+1, 1).strftime('%j'))
-			else:
-				dayend = int(datetime.date(2012, i, 31).strftime('%j'))
-			
-			# Generate figure for each month
-			imgfile = LOG_PATH+'img/'+filenamebase+'/'+str(i)+'.png'
-			if not os.path.isdir(imgfile[:imgfile.rfind('/')]):
-				os.makedirs(imgfile[:imgfile.rfind('/')])
-			if not os.path.isfile(imgfile) or newData:
-				experiment = Experiment.fromfilename(filenamebase)
-				size = experiment.setup.itsize * 1.8 * 1.1 # IT x PUE +10%
-				if experiment.setup.solar*1.1 > size:
-					size = experiment.setup.solar*1.1
-				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '--start', '%d' % (daystart*24), '--end', '%d' % (dayend*24), '--size', str(size)])
-				#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
-				processes.append(p)
-			
-			# Generate figure for a couple days in a month
-			imgfile = LOG_PATH+'img/'+filenamebase+'/'+str(i)+'-day.png'
-			if not os.path.isdir(imgfile[:imgfile.rfind('/')]):
-				os.makedirs(imgfile[:imgfile.rfind('/')])
-			if not os.path.isfile(imgfile) or newData:
-				experiment = Experiment.fromfilename(filenamebase)
-				size = experiment.setup.itsize * 1.8 * 1.1 # IT x PUE +10%
-				if experiment.setup.solar*1.1 > size:
-					size = experiment.setup.solar*1.1
-				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '--start', '%d' % ((daystart+15)*24), '--end', '%d' % ((daystart+18)*24), '--size', str(size)])
-				#, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
-				processes.append(p)
-			
-			# Wait until we only have 8 figures to go
-			while len(processes)>MAX_PROCESSES:
-				for p in processes:
-					if p.poll() != None:
-						processes.remove(p)
-				if len(processes)>MAX_PROCESSES:
-					time.sleep(0.5)
-	# Wait for everybody to finish
-	while len(processes)>0:
-		for p in processes:
-			if p.poll() != None:
-				processes.remove(p)
-		if len(processes)>0:
-			time.sleep(0.5)
-
-"""
-Generate figures for a filename base
-"""
-def generateFigures(experiment):
-	genFigures(experiment.getFilename())
 
 """
 Save the details of an experiment with a datacenter with a given setup.
@@ -474,15 +83,15 @@ def saveDetails(experiment):
 		fout.write('<h1>Log</h1>\n')
 		fout.write('<ul>\n')
 		fout.write('  <li>Errors: %d</li>\n' % experiment.errors)
-		fout.write('  <li><a href="%s">Log file</a></li>\n' % (experiment.getFilename()+'.log'))
+		fout.write('  <li><a href="%s.log">Log file</a></li>\n' % experiment.getFilename())
 		fout.write('</ul>\n')
 		
 		# Figure for each month
 		fout.write('<h1>Graphics</h1>\n')
 		for i in range(1, 12+1):
 			fout.write('<h2>%s</h2>\n' % (datetime.date(2012, i, 1).strftime('%B')))
-			fout.write('<img src="%s"/><br/>\n' % ('img/'+experiment.getFilename()+'/'+str(i)+'.png'))
-			fout.write('<img src="%s"/><br/>\n' % ('img/'+experiment.getFilename()+'/'+str(i)+'-day.png'))
+			fout.write('<img src="img/%s/%d.png"/><br/>\n' %     (experiment.getFilename(), i))
+			fout.write('<img src="img/%s/%d-day.png"/><br/>\n' % (experiment.getFilename(), i))
 		
 		# Footer
 		fout.write('</body>\n')
@@ -641,13 +250,8 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 		fout.write('<td align="right"><font color="#FF0000">%.1fy</font></td>\n' % ammortization)
 	fout.write('<tr/>\n')
 
-# Parsing
-if __name__ == "__main__":
-	# Collect results by checking all files in the log directory
-	print 'Collecting results...'
+def getResults():
 	results = {}
-	expRunni = 0
-	expTotal = 0
 	for filename in sorted(os.listdir(LOG_PATH)):
 		if filename.endswith('.log'):
 			# Get experiment information from filename
@@ -717,9 +321,6 @@ if __name__ == "__main__":
 				
 			experiment.errors = errors
 			experiment.progress = 100.0*lastTime/experiment.scenario.period
-			if experiment.progress < 100.0:
-				expRunni += 1
-			expTotal += 1
 			
 			experiment.result = Result(peakpower=peakpower)
 			experiment.cost = Cost(energy=costenergy, peak=costpeak, capex=costcapex, building=costbuilding)
@@ -735,6 +336,20 @@ if __name__ == "__main__":
 			if experiment.scenario not in results:
 				results[experiment.scenario] = []
 			results[experiment.scenario].append(experiment)
+	return results
+
+# Parsing
+if __name__ == "__main__":
+	# Collect results by checking all files in the log directory
+	print 'Collecting results...'
+	results = getResults()
+	expRunni = 0
+	expTotal = 0
+	for scenario in results:
+		for experiment in results[scenario]:
+			if experiment.progress < 100.0:
+				expRunni += 1
+			expTotal += 1
 	
 	# Main Summary
 	# ============================================================
@@ -820,6 +435,7 @@ if __name__ == "__main__":
 			fout.write('</tr>\n')
 		fout.write('</tbody>\n')
 		fout.write('</table>\n')
+		fout.write('<br/>\n')
 		
 		# Add 3D figures to the summary page
 		i=0
@@ -837,6 +453,7 @@ if __name__ == "__main__":
 				fout.write('</tr>\n')
 		fout.write('</tr>\n')
 		fout.write('</table>\n')
+		
 		
 		fout.write('<h1>Locations</h1>\n')
 		locations = []
@@ -910,6 +527,7 @@ if __name__ == "__main__":
 			fout.write('</tbody>\n')
 			fout.write('</table>\n')
 		
+		
 		fout.write('<h1>Cooling</h1>\n')
 		coolingtypes = []
 		for scenario in sorted(results.keys()):
@@ -921,6 +539,13 @@ if __name__ == "__main__":
 		
 		
 		fout.write('<h1>Datacenter size</h1>\n')
+		datacentersizes = []
+		for scenario in sorted(results.keys()):
+			for experiment in results[scenario]:
+				if experiment.setup.itsize not in datacentersizes:
+					datacentersizes.append(experiment.setup.itsize)
+		for datacentersize in datacentersizes:
+			fout.write('<h2>%s</h2>\n' % (powerStr(datacentersize) if datacentersize != None else 'None'))
 		
 		
 		fout.write('<h1>Experiments</h1>\n')
@@ -929,6 +554,7 @@ if __name__ == "__main__":
 		if expTotal > 0:
 			fout.write('Completed: %.1f%%<br/>\n' % (100.0*float(expTotal-expRunni)/expTotal))
 		fout.write('<br/>\n')
+		
 		
 		# Footer
 		fout.write('</body>\n')
