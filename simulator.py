@@ -157,6 +157,7 @@ class Simulator:
 		if self.batteryManagement:
 			start = 0.0
 			end = 70.0
+			# Dicotomic search
 			while end-start > 0.1:
 				mid = start+(end-start)/2.0
 				cycles = self.infra.battery.getBatteryCycles(mid)
@@ -258,12 +259,12 @@ class Simulator:
 						reqNodes = 1.0*sum(reqNodes)/len(reqNodes)
 						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 						#w = round(loadPower, 1)
-						w = math.ceil(1.05*loadPower) # Add extra 5% to predictionto prevent going to extreme
+						w = math.ceil(1.05*loadPower) # Add extra 5% to prediction to prevent going to extreme
 						# TODO Workload prediction: w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
-				#if timeStr(time) == '79d11h':# or timeStr(time) == '110d22h30m':
+				#if timeStr(time) == '1d16h15m':# or timeStr(time) == '110d22h30m':
 					#solver.saveModel = True
 				scale = 1.0 if solver.options.maxSize < 1000*1000 else 1000.0
 				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter, scale=scale)

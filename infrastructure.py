@@ -242,12 +242,12 @@ class IT:
 				# Racks with minimum power
 				racksToGo = self.racks[rackId].number - math.ceil(reqRacks)
 				if auxminimum > 0:
+					racksToGo -= math.ceil(auxminimum/numRackServers)
 					power += math.floor(auxminimum/numRackServers) * self.racks[rackId].getPower(0, minimum=numRackServers, turnoff=turnoff)
 					auxminimum -= math.floor(auxminimum/numRackServers) * numRackServers
 					if auxminimum < numRackServers:
 						power += self.racks[rackId].getPower(0, minimum=auxminimum, turnoff=turnoff)
 						auxminimum -= auxminimum
-					racksToGo -= math.ceil(auxminimum/numRackServers)
 				# Racks completely off
 				if racksToGo > 0:
 					minRackPower = self.racks[rackId].getPower(0, minimum=0, turnoff=turnoff)
@@ -470,6 +470,26 @@ if __name__ == "__main__":
 	infra = Infrastructure('data/parasol.infra')
 	infra.printSummary()
 	
+	# Check that the function grows properly
+	prevpower = 0.0
+	for i in range(0, 64):
+		if prevpower > infra.it.getPower(i, minimum=8, turnoff=True):
+			print 'wrong'
+		prevpower = infra.it.getPower(i, minimum=8, turnoff=True)
+	
+	'''
+	infra = Infrastructure('data/large.infra')
+	infra.printSummary()
+	print 'Checking'
+	prevpower = 0.0
+	for i in range(0, infra.it.getNumServers()):
+		#print i, infra.it.getPower(i, minimum=8, turnoff=True)
+		if prevpower > infra.it.getPower(i, minimum=8, turnoff=True):
+			print 'wrong'
+		prevpower = infra.it.getPower(i, minimum=8, turnoff=True)
+	'''
+	
+	'''
 	# Testing cooling
 	for outtemp in range(15, 38):
 		print outtemp, infra.cooling.getPower(outtemp)
@@ -512,4 +532,5 @@ if __name__ == "__main__":
 			print '%4d => %7.1fW => %4d' % (n, power, infra.it.getNodes(power, minimum=0))
 		print infra.it.getNumServers(), infra.it.getMaxPower(), infra.it.getNodes(infra.it.getMaxPower(), minimum=0)
 	print datetime.now()-t0
+	'''
 	

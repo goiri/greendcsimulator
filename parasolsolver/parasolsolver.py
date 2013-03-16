@@ -145,6 +145,11 @@ class ParasolModel:
 				Workload[t] = round(self.load[jW].v/scale, 2)
 				if Workload[t] > MaxWorkload:
 					MaxWorkload = Workload[t]
+				# This fixes some small problems but I still have to check
+				#if t == 0 and Workload[t] < self.options.minSizeIni:
+					#Workload[t] = self.options.minSizeIni
+				#elif t > 0 and Workload[t] < self.options.minSize:
+					#Workload[t] = self.options.minSize
 		else:
 			# Default workload
 			for t in range(0, self.options.maxTime):
