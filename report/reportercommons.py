@@ -49,10 +49,19 @@ def getBarChart(vals, maxval, width=100, height=15, color='blue'):
 Defines the scenario to evaluate the datacenter
 """
 class Scenario:
-	def __init__(self, netmeter=0, period=None, workload=None):
+	def __init__(self, netmeter=0, period=None, workload=None, itsize=0.0):
 		self.netmeter = netmeter
 		self.period = period
 		self.workload = workload
+		self.itsize = itsize
+	
+	def getDCName(self):
+		if powerStr(self.itsize) == '1.8kW':
+			return 'Parasol'
+		elif powerStr(self.itsize) == '5.7MW':
+			return 'Large'
+		else:
+			return powerStr(self.itsize)
 	
 	def __str__(self):
 		out = ''
@@ -60,19 +69,21 @@ class Scenario:
 		out += '%.1f' % (self.netmeter*100.0)
 		out += '-%s' % timeStr(self.period)
 		out += '-%s' % self.workload.title()
+		out += '-%s' % powerStr(self.itsize)
 		return out
 	
 	def __cmp__(self, other):
 		if other == None:
 			return 1
+		elif self.period != other.period:
+			return self.period - other.period
+		elif self.itsize != other.itsize:
+			return self.itsize - other.itsize
+		elif self.workload != other.workload:
+			return cmp(self.workload, other.workload)
+		#elif self.netmeter != other.netmeter:
 		else:
-			if self.workload == other.workload:
-				if self.netmeter == other.netmeter:
-					return self.period - other.period
-				else:
-					return self.netmeter - other.netmeter
-			else:
-				return cmp(self.workload, other.workload)
+			return self.netmeter - other.netmeter
 	
 	def __hash__(self):
 		return hash(str(self))
@@ -81,9 +92,8 @@ class Scenario:
 Defines the setup of the datacenter.
 """
 class Setup:
-	def __init__(self, itsize=0.0, solar=0.0, battery=0.0, location=None, deferrable=False, turnoff=False, greenswitch=True, cooling=None):
+	def __init__(self, solar=0.0, battery=0.0, location=None, deferrable=False, turnoff=False, greenswitch=True, cooling=None):
 		self.location = location
-		self.itsize = itsize
 		self.solar = solar
 		self.battery = battery
 		self.deferrable = deferrable
@@ -94,8 +104,6 @@ class Setup:
 	def __cmp__(self, other):
 		if other == None:
 			return 1
-		elif self.itsize != other.itsize:
-			return self.itsize - other.itsize
 		elif self.cooling != other.cooling:
 			return cmp(self.cooling, other.cooling)
 		elif self.location != other.location:
@@ -112,7 +120,6 @@ class Setup:
 	def __str__(self):
 		out = ''
 		out += '%s' % self.location.replace('_', ' ').title()[0:20]
-		out += ' IT:%s' % powerStr(self.itsize)
 		out += ' Sun:%s' % powerStr(self.solar)
 		out += ' Bat:%s' % energyStr(self.battery)
 		return out
@@ -217,8 +224,8 @@ class Experiment:
 			else:
 				print 'Unknown value:', value
 		# Update information
-		ret.scenario = Scenario(netmeter=netmeter, period=period, workload=workload)
-		ret.setup =    Setup(itsize=itsize, solar=solar, battery=battery, location=location, cooling=cooling, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch)
+		ret.scenario = Scenario(netmeter=netmeter, period=period, workload=workload, itsize=itsize)
+		ret.setup =    Setup(solar=solar, battery=battery, location=location, cooling=cooling, deferrable=delay, turnoff=not alwayson, greenswitch=greenswitch)
 		
 		return ret
 
@@ -230,7 +237,7 @@ class Experiment:
 	def getFilename(self):
 		filename = 'result'
 		# IT size
-		filename += '-%.1f' % self.setup.itsize
+		filename += '-%.1f' % self.scenario.itsize
 		# Solar
 		filename += '-%d' % self.setup.battery
 		# Battery

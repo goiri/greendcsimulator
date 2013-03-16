@@ -53,7 +53,7 @@ def genFigures(filenamebase):
 				os.makedirs(imgfile[:imgfile.rfind('/')])
 			if not os.path.isfile(imgfile) or newData:
 				experiment = Experiment.fromfilename(filenamebase)
-				size = experiment.setup.itsize * 1.8 * 1.1 # IT x PUE +10%
+				size = experiment.scenario.itsize * 1.8 * 1.1 # IT x PUE +10%
 				if experiment.setup.solar*1.1 > size:
 					size = experiment.setup.solar*1.1
 				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '--start', '%d' % (daystart*24), '--end', '%d' % (dayend*24), '--size', str(size)])
@@ -66,7 +66,7 @@ def genFigures(filenamebase):
 				os.makedirs(imgfile[:imgfile.rfind('/')])
 			if not os.path.isfile(imgfile) or newData:
 				experiment = Experiment.fromfilename(filenamebase)
-				size = experiment.setup.itsize * 1.8 * 1.1 # IT x PUE +10%
+				size = experiment.scenario.itsize * 1.8 * 1.1 # IT x PUE +10%
 				if experiment.setup.solar*1.1 > size:
 					size = experiment.setup.solar*1.1
 				p = Popen(['/bin/bash', 'plot.sh', datafile, imgfile, '--start', '%d' % ((daystart+15)*24), '--end', '%d' % ((daystart+18)*24), '--size', str(size)])
