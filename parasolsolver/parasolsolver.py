@@ -181,9 +181,10 @@ class ParasolModel:
 				# Fixed size (minimum size)
 				minSize = (self.options.minSizeIni if t==0 else self.options.minSize)/scale
 				Load[t] = max(Workload[t], minSize)
-			LoadBrown[t] = m.addVar(ub=math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale), name="LoadBrown["+str(t)+"]") if self.isBrown()   else 0.0
-			LoadBatt[t] =  m.addVar(ub=math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale), name="LoadBatt["+str(t)+"]")  if self.isBattery() else 0.0
-			LoadGreen[t] = m.addVar(ub=math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale), name="LoadGreen["+str(t)+"]") if self.isGreen()   else 0.0
+			uboundary = math.ceil(EXTRA_MARGIN*PUE[t]*self.options.maxSize/scale)+1
+			LoadBrown[t] = m.addVar(ub=uboundary, name="LoadBrown["+str(t)+"]") if self.isBrown()   else 0.0
+			LoadGreen[t] = m.addVar(ub=uboundary, name="LoadGreen["+str(t)+"]") if self.isGreen()   else 0.0
+			LoadBatt[t] =  m.addVar(ub=uboundary, name="LoadBatt["+str(t)+"]")  if self.isBattery() else 0.0
 		
 		# Battery
 		BattGreen = {}

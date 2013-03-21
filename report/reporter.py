@@ -148,26 +148,20 @@ def writeExperimentLine(fout, experiment, baseexperiment):
 		experimentDescription = '<b>'+experimentDescription+'</b>'
 	fout.write('<td align="center"><a href="%s">%s</a></td>\n' % (experiment.getFilename()+'.html', experimentDescription))
 	# Setup
-	fout.write('<td align="right">%s</td>\n' % (timeStr(experiment.scenario.period)))
-	fout.write('<td align="right">%s (%s)</td>\n' % (powerStr(experiment.scenario.itsize), powerStr(experiment.result.peakpower)))
-	fout.write('<td align="center">%s</td>\n' % ('-' if experiment.setup.cooling == None or experiment.setup.cooling.lower() == 'none' else experiment.setup.cooling.title()))
-	fout.write('<td align="right">%s</td>\n' % (experiment.setup.location.replace('_', ' ').title()[0:10]))
+	fout.write('<td align="right">%s</td>\n'     % (timeStr(experiment.scenario.period)))
+	fout.write('<td align="right">%s(%s)</td>\n' % (powerStr(experiment.scenario.itsize), powerStr(experiment.result.peakpower)))
+	fout.write('<td align="center">%s</td>\n'    % ('-' if experiment.setup.cooling == None or experiment.setup.cooling.lower() == 'none' else experiment.setup.cooling.title()))
+	fout.write('<td align="right">%s</td>\n'     % (experiment.setup.location.replace('_', ' ').title()[0:10]))
 	fout.write('<td align="right">%.1f%%</td>\n' % (experiment.scenario.netmeter*100.0))
-	fout.write('<td align="right">%s</td>\n' % (experiment.scenario.workload.title()))
+	fout.write('<td align="right">%s</td>\n'     % (experiment.scenario.workload.title()))
 	# Solar
-	if experiment.setup.solar == 0:
-		fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-	else:
-		fout.write('<td align="right">%s</td>\n' % powerStr(experiment.setup.solar))
+	fout.write('<td align="right">%s</td>\n'     % (powerStr(experiment.setup.solar) if experiment.setup.solar > 0 else '<font color="#999999">&#9747;</font>'))
 	# Battery
-	if experiment.setup.battery == 0:
-		fout.write('<td align="center"><font color="#999999">&#9747;</font></td>\n')
-	else:
-		fout.write('<td align="right">%s</td>\n' % energyStr(experiment.setup.battery))
+	fout.write('<td align="right">%s</td>\n'     % (energyStr(experiment.setup.battery) if experiment.setup.battery > 0 else '<font color="#999999">&#9747;</font>'))
 	# Deferrable
-	fout.write('<td align="center">%s</td>\n' % ('<font color="green">&#10003;</font>' if experiment.setup.deferrable else '<font color="#999999">&#9747;</font>'))
+	fout.write('<td align="center">%s</td>\n'    % ('<font color="green">&#10003;</font>' if experiment.setup.deferrable else '<font color="#999999">&#9747;</font>'))
 	# Turn on/off nodes
-	fout.write('<td align="center">%s</td>\n' % ('<font color="green">&#10003;</font>' if experiment.setup.turnoff else '<font color="#999999">&#9747;</font>'))
+	fout.write('<td align="center">%s</td>\n'    % ('<font color="green">&#10003;</font>' if experiment.setup.turnoff else '<font color="#999999">&#9747;</font>'))
 	# Costs
 	fout.write('<td align="right" width="80px">%s</td>\n' % costStr(experiment.cost.getOPEX()))
 	fout.write('<td>\n')

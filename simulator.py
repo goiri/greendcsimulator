@@ -211,7 +211,7 @@ class Simulator:
 				# All the covering subset idle
 				if coveringPower < self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff):
 					coveringPower = self.infra.it.getPower(0, minimum=self.workload.minimum, turnoff=self.turnoff)
-				solver.options.minSizeIni = coveringPower
+				solver.options.minSizeIni = round(coveringPower, 2)
 				
 				# Fill data with actual values and predictions
 				greenAvail = [] if self.infra.solar.capacity > 0.0 else None
@@ -264,7 +264,7 @@ class Simulator:
 						worklPredi.append(TimeValue(predseconds, w))
 				
 				# Generate solution
-				#if timeStr(time) == '1d16h15m':# or timeStr(time) == '110d22h30m':
+				#if timeStr(time) == '272d17h15m':# or timeStr(time) == '110d22h30m':
 					#solver.saveModel = True
 				scale = 1.0 if solver.options.maxSize < 1000*1000 else 1000.0
 				obj, sol = solver.solve(greenAvail=greenAvail, brownPrice=brownPrice, pue=puePredi, load=worklPredi, stateChargeBattery=stateChargeBattery, stateNetMeter=stateNetMeter, scale=scale)
