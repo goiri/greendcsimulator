@@ -9,7 +9,7 @@ class SolverOptions:
 		self.output = None
 		self.report = None
 		
-		self.slotLength = 3600 # Seconds
+		self.slotLength = 60*60 # Seconds
 		
 		self.timeLimit = 0 # seconds
 		#self.maxTime = 48 # hours

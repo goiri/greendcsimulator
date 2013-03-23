@@ -142,14 +142,13 @@ class ParasolModel:
 				ts = t*self.options.slotLength
 				while len(self.load)>jW+1 and self.load[jW+1].t <= ts:
 					jW += 1
-				Workload[t] = round(self.load[jW].v/scale, 2)
+				if t==0:
+					Workload[t] = round(self.load[jW].v/scale, 2)
+				else:
+					 # Add extra 5% to prevent going to tight
+					Workload[t] = round(EXTRA_MARGIN*self.load[jW].v/scale, 2)
 				if Workload[t] > MaxWorkload:
 					MaxWorkload = Workload[t]
-				# This fixes some small problems but I still have to check
-				#if t == 0 and Workload[t] < self.options.minSizeIni:
-					#Workload[t] = self.options.minSizeIni
-				#elif t > 0 and Workload[t] < self.options.minSize:
-					#Workload[t] = self.options.minSize
 		else:
 			# Default workload
 			for t in range(0, self.options.maxTime):
@@ -941,30 +940,7 @@ if __name__=='__main__':
 		TimeValue(75600, 0.000000), 
 		TimeValue(79200, 0.000000), 
 		TimeValue(82800, 0.000000)]
-	puePredi = [TimeValue(0, 1.050000), 
-		TimeValue(3600, 1.050000), 
-		TimeValue(7200, 1.050000), 
-		TimeValue(10800, 1.050000), 
-		TimeValue(14400, 1.050000), 
-		TimeValue(18000, 1.050000), 
-		TimeValue(21600, 1.050000), 
-		TimeValue(25200, 1.050000), 
-		TimeValue(28800, 1.050000), 
-		TimeValue(32400, 1.050000), 
-		TimeValue(36000, 1.050000), 
-		TimeValue(39600, 1.050000), 
-		TimeValue(43200, 1.050000), 
-		TimeValue(46800, 1.050000), 
-		TimeValue(50400, 1.050000), 
-		TimeValue(54000, 1.050000), 
-		TimeValue(57600, 1.050000), 
-		TimeValue(61200, 1.050000), 
-		TimeValue(64800, 1.050000), 
-		TimeValue(68400, 1.050000), 
-		TimeValue(72000, 1.050000), 
-		TimeValue(75600, 1.050000), 
-		TimeValue(79200, 1.050000), 
-		TimeValue(82800, 1.050000)]
+	puePredi = [TimeValue(0, 1.050000)]
 	worklPredi = [TimeValue(0, 1486975.600000), 
 		TimeValue(3600, 1394976.000000), 
 		TimeValue(7200, 1555740.000000), 

@@ -259,7 +259,7 @@ class Simulator:
 						reqNodes = 1.0*sum(reqNodes)/len(reqNodes)
 						loadPower = self.infra.it.getPower(reqNodes, minimum=self.workload.minimum, turnoff=self.turnoff)
 						#w = round(loadPower, 1)
-						w = math.ceil(1.05*loadPower) # Add extra 5% to prediction to prevent going to extreme
+						w = math.ceil(loadPower)
 						# TODO Workload prediction: w = 1000.0
 						worklPredi.append(TimeValue(predseconds, w))
 				
