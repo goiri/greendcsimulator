@@ -1,0 +1,23 @@
+# Location
+latitude = 40.522396
+longitude = -74.46073
+
+# Solar in Parasol
+#solar.data = data/parasol-1month.solar
+#solar.capacity = 3200 # W
+#solar.efficiency = 0.97 # 97%
+# Solar in Newark
+solar.data = data/11-alfa.data,NEWARK_INTERNATIONAL_ARPT,-4h
+solar.capacity = 1 # W
+solar.efficiency = 1.00 # 100%
+
+# Wind
+wind.data = 
+
+# Electricity
+brown.energy = data/parasol.brown
+brown.power  = data/parasol.brownpeak
+brown.netmetering = 0.4 # 40%
+
+# Temperature
+temperature = data/locations/newark.weather,NEWARK_INTERNATIONAL_ARPT
